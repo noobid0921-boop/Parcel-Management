@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+
+{% block title %}GRN #{{ grn.id }} Details - Parcel Management{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-file-alt me-2"></i>GRN #{{ grn.id }} Details</h2>
+            <div>
+                <a href="{% url 'grn:grn_list' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to List
+                </a>
+                {% if user.is_staff or user.is_superuser %}
+                    {% if not grn.is_delivered %}
+                        <button type="button" class="btn btn-outline-danger ms-2" onclick="confirmDelete('{{ grn.id }}', '{{ grn.total_lines }}')">
+                            <i class="fas fa-trash me-2"></i>Delete GRN
+                        </button>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- GRN Header Information -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>GRN Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-user me-2"></i>Receiver Details</h6>
+                        <table class="table table-sm table-borderless">
+                            <tr>
+                                <td><strong>Name:</strong></td>
+                                <td>{{ grn.receiver.name }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Username:</strong></td>
+                                <td>{{ grn.receiver.username }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Email:</strong></td>
+                                <td>{{ grn.receiver.email }}</td>
+                            </tr>
+                            {% if grn.receiver.phone %}
+                            <tr>
+                                <td><strong>Phone:</strong></td>
+                                <td>{{ grn.receiver.phone }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-map-marker-alt me-2"></i>Delivery Information</h6>
+                        <table class="table table-sm table-borderless">
+                            <tr>
+                                <td><strong>Location:</strong></td>
+                                <td>{{ grn.delivery_location.name }}</td>
+                            </tr>
+                            {% if grn.place %}
+                            <tr>
+                                <td><strong>Place:</strong></td>
+                                <td>{{ grn.place }}</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>Created:</strong></td>
+                                <td>{{ grn.created_at|date:"M d, Y g:i A" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Status:</strong></td>
+                                <td>
+                                    {% if grn.is_delivered %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check me-1"></i>All Delivered
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-warning">
+                                            <i class="fas fa-clock me-1"></i>Pending
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Lines:</strong></td>
+                                <td><span class="badge bg-secondary">{{ grn.total_lines }}</span></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRN Lines -->
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="fas fa-boxes me-2"></i>Parcel Details ({{ grn_lines.count }} items)</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if grn_lines %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Line #</th>
+                                    <th>Sender</th>
+                                    <th>Contact</th>
+                                    <th>Courier</th>
+                                    <th>Parcel Type</th>
+                                    <th>OTP</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for line in grn_lines %}
+                                    <tr {% if line.dn %}class="table-success"{% endif %}>
+                                        <td>
+                                            <strong>{{ line.line_number }}</strong>
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <strong>{{ line.sender_name|default:"Unknown" }}</strong>
+                                                {% if line.sender_location %}
+                                                    <br><small class="text-muted">
+                                                        <i class="fas fa-map-pin me-1"></i>{{ line.sender_location }}
+                                                    </small>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if line.phone %}
+                                                <i class="fas fa-phone me-1"></i>{{ line.phone }}
+                                            {% else %}
+                                                <span class="text-muted">N/A</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <strong>{{ line.get_courier_name_display }}</strong>
+                                                {% if line.courier_id %}
+                                                    <br><small class="text-muted">
+                                                        <i class="fas fa-barcode me-1"></i>{{ line.courier_id }}
+                                                    </small>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info">{{ line.get_parcel_type_display }}</span>
+                                            {% if line.remark %}
+                                                <br><small class="text-muted">{{ line.remark }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if line.otp %}
+                                                {% if line.otp.valid and not line.otp.is_expired %}
+                                                    <code class="text-success">{{ line.otp.otp }}</code>
+                                                    <br><small class="text-muted">Valid</small>
+                                                {% else %}
+                                                    <code class="text-muted">{{ line.otp.otp }}</code>
+                                                    <br><small class="text-danger">
+                                                        {% if line.otp.is_expired %}Expired{% else %}Used{% endif %}
+                                                    </small>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">No OTP</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if line.dn %}
+                                                <span class="badge bg-success">
+                                                    <i class="fas fa-check me-1"></i>Delivered
+                                                </span>
+                                                <br><small class="text-muted">
+                                                    {{ line.dn.created_at|date:"M d, Y g:i A" }}
+                                                </small>
+                                            {% else %}
+                                                <span class="badge bg-warning">
+                                                    <i class="fas fa-clock me-1"></i>Pending
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if user.is_staff or user.is_superuser %}
+                                                {% if not line.dn %}
+                                                    <a href="{% url 'grn:otp_verify' %}?grn_line_id={{ line.id }}" 
+                                                       class="btn btn-sm btn-primary" 
+                                                       title="Verify OTP & Deliver">
+                                                        <i class="fas fa-key"></i>
+                                                    </a>
+                                                {% else %}
+                                                    <span class="text-muted">
+                                                        <i class="fas fa-check-circle"></i>
+                                                    </span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-inbox fa-2x mb-3"></i>
+                        <p>No parcel details found for this GRN.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete GRN #<span id="delete-grn-id"></span>?</p>
+                <p>This will also delete <strong><span id="delete-lines-count"></span> parcel line(s)</strong> and cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <form id="delete-form" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Delete GRN
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmDelete(grnId, linesCount) {
+    document.getElementById('delete-grn-id').textContent = grnId;
+    document.getElementById('delete-lines-count').textContent = linesCount;
+    document.getElementById('delete-form').action = '/grn/delete/' + grnId + '/';
+    
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,328 @@
+{% extends 'base.html' %}
+
+{% block title %}GRN List - Parcel Management{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-list me-2"></i>GRN List</h2>
+            {% if user.is_staff or user.is_superuser %}
+                <a href="{% url 'grn:grn_create' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Create New GRN
+                </a>
+            {% endif %}
+        </div>
+
+        <!-- Filters -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-filter me-2"></i>Filters
+                    <button class="btn btn-sm btn-outline-secondary float-end" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </h6>
+            </div>
+            <div class="collapse" id="filterCollapse">
+                <div class="card-body">
+                    <form method="get" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Search</label>
+                            <input type="text" name="q" class="form-control" 
+                                   value="{{ current_filters.q }}" 
+                                   placeholder="GRN ID, Sender, Receiver...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" name="start_date" class="form-control" 
+                                   value="{{ current_filters.start_date }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">End Date</label>
+                            <input type="date" name="end_date" class="form-control" 
+                                   value="{{ current_filters.end_date }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Parcel Type</label>
+                            <select name="parcel_type" class="form-select">
+                                <option value="">All Types</option>
+                                {% for value, label in parcel_type_choices %}
+                                    <option value="{{ value }}" {% if current_filters.parcel_type == value %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="">All Status</option>
+                                <option value="pending" {% if current_filters.status == 'pending' %}selected{% endif %}>Pending</option>
+                                <option value="delivered" {% if current_filters.status == 'delivered' %}selected{% endif %}>Delivered</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="col-md-2">
+                                <label class="form-label">Courier</label>
+                                <select name="courier" class="form-select">
+                                    <option value="">All Couriers</option>
+                                    {% for value, label in courier_choices %}
+                                        <option value="{{ value }}" {% if current_filters.courier == value %}selected{% endif %}>
+                                            {{ label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Phone</label>
+                                <input type="text" name="phone" class="form-control" 
+                                       value="{{ current_filters.phone }}" 
+                                       placeholder="Phone number">
+                            </div>
+                            <div class="col-md-2">
+                                <a href="{% url 'grn:grn_list' %}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-times me-2"></i>Clear Filters
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Location Display -->
+        {% if current_location %}
+            <div class="alert alert-info">
+                <i class="fas fa-map-marker-alt me-2"></i>
+                Showing GRNs for: <strong>{{ current_location.name }}</strong>
+            </div>
+        {% endif %}
+
+        <!-- GRN Table -->
+        <div class="card">
+            <div class="card-body">
+                {% if grns %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>GRN ID</th>
+                                    <th>Receiver</th>
+                                    <th>Location</th>
+                                    <th>Total Parcel</th>
+                                    <th>Status</th>
+                                    <th>Created Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for grn in grns %}
+                                    <tr>
+                                        <td>
+                                            <strong>#{{ grn.id }}</strong>
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <strong>{{ grn.receiver.name }}</strong>
+                                                <br>
+                                                <small class="text-muted">{{ grn.receiver.username }}</small>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <i class="fas fa-map-marker-alt text-muted me-1"></i>
+                                            {{ grn.delivery_location.name }}
+                                            {% if grn.place %}
+                                                <br><small class="text-muted">{{ grn.place }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ grn.total_lines }} parcel</span>
+                                        </td>
+                                        <td>
+                                            {% if grn.is_delivered %}
+                                                <span class="badge bg-success">
+                                                    <i class="fas fa-check me-1"></i>Delivered
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-warning">
+                                                    <i class="fas fa-clock me-1"></i>Pending
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div>
+                                                {{ grn.created_at|date:"M d, Y" }}
+                                                <br>
+                                                <small class="text-muted">{{ grn.created_at|time:"g:i A" }}</small>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <a href="{% url 'grn:grn_detail' grn.pk %}" 
+                                                   class="btn btn-sm btn-outline-primary" 
+                                                   title="View Details">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                {% if user.is_staff or user.is_superuser %}
+                                                    {% if not grn.is_delivered %}
+                                                        <button type="button" 
+                                                                class="btn btn-sm btn-outline-danger" 
+                                                                title="Delete GRN"
+                                                                onclick="confirmDelete('{{ grn.id }}', '{{ grn.total_lines }}')">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if is_paginated %}
+                        <nav aria-label="GRN pagination">
+                            <ul class="pagination justify-content-center mt-4">
+                                {% if page_obj.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page=1{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">
+                                            <i class="fas fa-angle-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">
+                                            <i class="fas fa-angle-left"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+
+                                {% for num in page_obj.paginator.page_range %}
+                                    {% if page_obj.number == num %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ num }}</span>
+                                        </li>
+                                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ num }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">{{ num }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if page_obj.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">
+                                            <i class="fas fa-angle-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">
+                                            <i class="fas fa-angle-double-right"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+
+                        <div class="text-center">
+                            <small class="text-muted">
+                                Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} 
+                                of {{ page_obj.paginator.count }} entries
+                            </small>
+                        </div>
+                    {% endif %}
+
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No GRNs Found</h5>
+                        <p class="text-muted">
+                            {% if current_filters.q or current_filters.start_date or current_filters.end_date %}
+                                No GRNs match your current filters. Try adjusting your search criteria.
+                            {% else %}
+                                No GRNs have been created yet.
+                            {% endif %}
+                        </p>
+                        {% if user.is_staff or user.is_superuser %}
+                            <a href="{% url 'grn:grn_create' %}" class="btn btn-primary">
+                                <i class="fas fa-plus me-2"></i>Create First GRN
+                            </a>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete GRN #<span id="delete-grn-id"></span>?</p>
+                <p>This will also delete <strong><span id="delete-lines-count"></span> parcel line(s)</strong> and cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <form id="delete-form" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Delete GRN
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmDelete(grnId, linesCount) {
+    document.getElementById('delete-grn-id').textContent = grnId;
+    document.getElementById('delete-lines-count').textContent = linesCount;
+    document.getElementById('delete-form').action = '/grn/delete/' + grnId + '/';
+    
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+// Auto-expand filters if there are active filters
+document.addEventListener('DOMContentLoaded', function() {
+    const hasFilters = {{ current_filters.q|yesno:"true,false" }} || 
+                      {{ current_filters.start_date|yesno:"true,false" }} || 
+                      {{ current_filters.end_date|yesno:"true,false" }} || 
+                      {{ current_filters.parcel_type|yesno:"true,false" }} || 
+                      {{ current_filters.status|yesno:"true,false" }} || 
+                      {{ current_filters.courier|yesno:"true,false" }} || 
+                      {{ current_filters.phone|yesno:"true,false" }};
+    
+    if (hasFilters) {
+        const filterCollapse = document.getElementById('filterCollapse');
+        const bsCollapse = new bootstrap.Collapse(filterCollapse, {
+            toggle: false
+        });
+        bsCollapse.show();
+    }
+});
+</script>
+{% endblock %}

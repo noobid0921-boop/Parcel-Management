@@ -1,0 +1,343 @@
+{% extends 'base.html' %}
+
+{% block title %}Create GRN - Parcel Management{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-plus-circle me-2"></i>Create New GRN</h2>
+            <a href="{% url 'grn:grn_list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to List
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>GRN Details</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="grn-form">
+                    {% csrf_token %}
+                    
+                    <!-- GRN Header Information -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label for="{{ form.receiver.id_for_label }}" class="form-label">
+                                <i class="fas fa-user me-1"></i>Receiver <span class="text-danger">*</span>
+                            </label>
+                            {{ form.receiver }}
+                            {% if form.receiver.errors %}
+                                <div class="text-danger">{{ form.receiver.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label for="{{ form.delivery_location.id_for_label }}" class="form-label">
+                                <i class="fas fa-map-marker-alt me-1"></i>Delivery Location <span class="text-danger">*</span>
+                            </label>
+                            {{ form.delivery_location }}
+                            {% if form.delivery_location.errors %}
+                                <div class="text-danger">{{ form.delivery_location.errors }}</div>
+                            {% endif %}
+                        </div>
+                        {% comment %} <div class="col-md-4">
+                            <label for="{{ form.place.id_for_label }}" class="form-label">
+                                <i class="fas fa-map-pin me-1"></i>Place
+                            </label>
+                            {{ form.place }}
+                            {% if form.place.errors %}
+                                <div class="text-danger">{{ form.place.errors }}</div>
+                            {% endif %}
+                        </div> {% endcomment %}
+                    </div>
+
+                    <!-- GRN Lines Section -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5><i class="fas fa-boxes me-2"></i>Parcel Details</h5>
+                            <button type="button" id="add-form-btn" class="btn btn-success">
+                                <i class="fas fa-plus me-2"></i>Add Another Parcel
+                            </button>
+                        </div>
+
+                        <!-- Formset Management Form -->
+                        {{ formset.management_form }}
+                        
+                        <!-- Container for all GRN line forms -->
+                        <div id="formset-container">
+                            {% for form in formset %}
+                                <div class="grn-line-form" data-form-index="{{ forloop.counter0 }}">
+                                    <div class="form-row-header">
+                                        <span>Parcel #{{ forloop.counter }}</span>
+                                        {% if not forloop.first %}
+                                            <button type="button" class="btn btn-sm btn-outline-danger float-end remove-form-btn">
+                                                <i class="fas fa-trash"></i> Remove
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <!-- Hidden fields -->
+                                    {% for hidden in form.hidden_fields %}
+                                        {{ hidden }}
+                                    {% endfor %}
+                                    
+                                    <div class="row">
+                                        <div class="col-md-3">
+                                            <label class="form-label">
+                                                <i class="fas fa-user me-1"></i>Sender Name <span class="text-danger">*</span>
+                                            </label>
+                                            {{ form.sender_name }}
+                                            {% if form.sender_name.errors %}
+                                                <div class="text-danger">{{ form.sender_name.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">
+                                                <i class="fas fa-phone me-1"></i>Phone
+                                            </label>
+                                            {{ form.phone }}
+                                            {% if form.phone.errors %}
+                                                <div class="text-danger">{{ form.phone.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">
+                                                <i class="fas fa-map-marker-alt me-1"></i>Sender Location
+                                            </label>
+                                            {{ form.sender_location }}
+                                            {% if form.sender_location.errors %}
+                                                <div class="text-danger">{{ form.sender_location.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">
+                                                <i class="fas fa-truck me-1"></i>Courier <span class="text-danger">*</span>
+                                            </label>
+                                            {{ form.courier_name }}
+                                            {% if form.courier_name.errors %}
+                                                <div class="text-danger">{{ form.courier_name.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row mt-3">
+                                        <div class="col-md-3">
+                                            <label class="form-label">
+                                                <i class="fas fa-barcode me-1"></i>Courier ID
+                                            </label>
+                                            {{ form.courier_id }}
+                                            {% if form.courier_id.errors %}
+                                                <div class="text-danger">{{ form.courier_id.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">
+                                                <i class="fas fa-box me-1"></i>Parcel Type <span class="text-danger">*</span>
+                                            </label>
+                                            {{ form.parcel_type }}
+                                            {% if form.parcel_type.errors %}
+                                                <div class="text-danger">{{ form.parcel_type.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">
+                                                <i class="fas fa-comment me-1"></i>Remarks
+                                            </label>
+                                            {{ form.remark }}
+                                            {% if form.remark.errors %}
+                                                <div class="text-danger">{{ form.remark.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <!-- Delete checkbox (hidden by default) -->
+                                    {% if form.DELETE %}
+                                        <div class="form-check mt-2" style="display: none;">
+                                            {{ form.DELETE }}
+                                            <label class="form-check-label" for="{{ form.DELETE.id_for_label }}">
+                                                Delete this form
+                                            </label>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- Template for new forms (hidden) -->
+                        <div id="empty-form" class="grn-line-form" style="display: none;" data-form-index="__prefix__">
+                            <div class="form-row-header">
+                                <span class="form-number">Parcel #</span>
+                                <button type="button" class="btn btn-sm btn-outline-danger float-end remove-form-btn">
+                                    <i class="fas fa-trash"></i> Remove
+                                </button>
+                            </div>
+                            
+                            {{ formset.empty_form.as_p }}
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <a href="{% url 'grn:grn_list' %}" class="btn btn-secondary me-md-2">
+                                    <i class="fas fa-times me-2"></i>Cancel
+                                </a>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-2"></i>Create GRN
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const formsetContainer = document.getElementById('formset-container');
+    const addFormBtn = document.getElementById('add-form-btn');
+    const totalFormsInput = document.getElementById('id_lines-TOTAL_FORMS');
+    
+    let formCount = parseInt(totalFormsInput.value);
+    
+    // Function to update form indices
+    function updateFormIndices() {
+        const forms = formsetContainer.querySelectorAll('.grn-line-form:not([style*="display: none"])');
+        forms.forEach((form, index) => {
+            // Update form number display
+            const formNumber = form.querySelector('.form-number, .form-row-header span');
+            if (formNumber) {
+                if (formNumber.classList.contains('form-number')) {
+                    formNumber.textContent = `Parcel #${index + 1}`;
+                } else {
+                    formNumber.textContent = `Parcel #${index + 1}`;
+                }
+            }
+            
+            // Update form attributes
+            const inputs = form.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                const name = input.getAttribute('name');
+                if (name) {
+                    const newName = name.replace(/lines-\d+/, `lines-${index}`);
+                    input.setAttribute('name', newName);
+                    input.setAttribute('id', 'id_' + newName);
+                }
+            });
+            
+            // Update labels
+            const labels = form.querySelectorAll('label[for]');
+            labels.forEach(label => {
+                const forAttr = label.getAttribute('for');
+                if (forAttr) {
+                    const newFor = forAttr.replace(/id_lines-\d+/, `id_lines-${index}`);
+                    label.setAttribute('for', newFor);
+                }
+            });
+            
+            form.setAttribute('data-form-index', index);
+        });
+        
+        // Update total forms count
+        totalFormsInput.value = forms.length;
+    }
+    
+    // Add new form
+    addFormBtn.addEventListener('click', function() {
+        const emptyForm = document.getElementById('empty-form');
+        const newForm = emptyForm.cloneNode(true);
+        
+        // Make it visible and give it a unique ID
+        newForm.style.display = 'block';
+        newForm.id = `form-${formCount}`;
+        newForm.setAttribute('data-form-index', formCount);
+        
+        // Update all the form fields
+        const html = newForm.innerHTML.replace(/__prefix__/g, formCount);
+        newForm.innerHTML = html;
+        
+        // Add to container
+        formsetContainer.appendChild(newForm);
+        
+        formCount++;
+        updateFormIndices();
+        
+        // Add event listener to the new remove button
+        const removeBtn = newForm.querySelector('.remove-form-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', function() {
+                removeForm(newForm);
+            });
+        }
+        
+        // Scroll to the new form
+        newForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    
+    // Remove form function
+    function removeForm(form) {
+        const deleteInput = form.querySelector('input[name*="-DELETE"]');
+        if (deleteInput) {
+            // If it's an existing form, mark for deletion
+            deleteInput.checked = true;
+            form.style.display = 'none';
+        } else {
+            // If it's a new form, remove it completely
+            form.remove();
+        }
+        updateFormIndices();
+    }
+    
+    // Add event listeners to existing remove buttons
+    document.querySelectorAll('.remove-form-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const form = btn.closest('.grn-line-form');
+            removeForm(form);
+        });
+    });
+    
+    // Auto-select current location if available
+    {% if current_location %}
+        const locationSelect = document.getElementById('{{ form.delivery_location.id_for_label }}');
+        if (locationSelect && !locationSelect.value) {
+            locationSelect.value = '{{ current_location.id }}';
+        }
+    {% endif %}
+    
+    // Form validation
+    document.getElementById('grn-form').addEventListener('submit', function(e) {
+        const visibleForms = formsetContainer.querySelectorAll('.grn-line-form:not([style*="display: none"])');
+        if (visibleForms.length === 0) {
+            e.preventDefault();
+            alert('Please add at least one parcel detail.');
+            return false;
+        }
+        
+        // Check if at least one form has required fields filled
+        let hasValidForm = false;
+        visibleForms.forEach(form => {
+            const senderName = form.querySelector('input[name*="-sender_name"]');
+            const courierName = form.querySelector('select[name*="-courier_name"]');
+            const parcelType = form.querySelector('select[name*="-parcel_type"]');
+            
+            if (senderName && senderName.value.trim() && 
+                courierName && courierName.value && 
+                parcelType && parcelType.value) {
+                hasValidForm = true;
+            }
+        });
+        
+        if (!hasValidForm) {
+            e.preventDefault();
+            alert('Please fill in the required fields (Sender Name, Courier, and Parcel Type) for at least one parcel.');
+            return false;
+        }
+    });
+});
+</script>
+{% endblock %}

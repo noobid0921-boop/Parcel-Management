@@ -1,0 +1,368 @@
+{% extends 'base.html' %}
+
+{% block title %}Delivery Notes{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Delivery Notes</h2>
+    </div>
+
+    <!-- Current Location Display -->
+    {% if current_location %}
+    <div class="alert alert-info mb-3">
+        <i class="fas fa-map-marker-alt"></i> Current Location: <strong>{{ current_location.name }}</strong>
+    </div>
+    {% endif %}
+
+    <!-- Advanced Filter -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row justify-content-between">
+                <div class="col-md-6">
+                    <button id="toggleAdvancedFilter" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-filter"></i> Advanced Filter
+                    </button>
+                </div>
+            </div>
+            <div class="row mt-3" id="advancedFilter" style="display: none;">
+                <div class="col-md-3">
+                    <label for="minDate" class="form-label">From:</label>
+                    <input type="date" id="minDate" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label for="maxDate" class="form-label">To:</label>
+                    <input type="date" id="maxDate" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label for="parcelTypeFilter" class="form-label">Parcel Type:</label>
+                    <select id="parcelTypeFilter" class="form-select form-select-sm">
+                        <option value="">All Types</option>
+                        {% for choice in parcel_type_choices %}
+                            <option value="{{ choice.0 }}">{{ choice.1 }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="courierFilter" class="form-label">Courier:</label>
+                    <select id="courierFilter" class="form-select form-select-sm">
+                        <option value="">All Couriers</option>
+                        {% for choice in courier_choices %}
+                            <option value="{{ choice.0 }}">{{ choice.1 }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <div class="card-title">Total Deliveries</div>
+                    <h4 id="totalDeliveries">{{ dns|length }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Section -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <div class="mb-3" id="tableButtons"></div>
+                <table id="deliveryTable" class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>DN ID</th>
+                            <th>GRN ID</th>
+                            <th>Line #</th>
+                            <th>Sender</th>
+                            <th>Receiver</th>
+                            <th>Phone</th>
+                            <th>Parcel Type</th>
+                            <th>Courier</th>
+                            <th>Location</th>
+                            <th>Delivered Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dn in dns %}
+                        <tr>
+                            <td>{{ dn.id }}</td>
+                            <td>
+                                {% if dn.grn_line.grn %}
+                                    <a href="{% url 'grn:grn_detail' dn.grn_line.grn.pk %}" class="text-decoration-none">
+                                        {{ dn.grn_line.grn.id }}
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ dn.grn_line.line_number|default:"—" }}</td>
+                            <td>{{ dn.grn_line.sender_name|default:"Unknown" }}</td>
+                            <td>
+                                {% if dn.grn_line.grn.receiver %}
+                                    {{ dn.grn_line.grn.receiver.name }}
+                                    <small class="text-muted d-block">{{ dn.grn_line.grn.receiver.username }}</small>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ dn.grn_line.phone|default:"—" }}</td>
+                            <td>
+                                <span class="badge bg-info">
+                                    {{ dn.grn_line.get_parcel_type_display|default:"Unknown" }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    {{ dn.grn_line.get_courier_name_display|default:"Unknown" }}
+                                </span>
+                            </td>
+                            <td>{{ dn.grn_line.grn.delivery_location.name|default:"—" }}</td>
+                            <td>
+                                <span title="{{ dn.created_at|date:'Y-m-d H:i:s' }}">
+                                    {{ dn.created_at|date:"M d, Y" }}
+                                    <small class="text-muted d-block">{{ dn.created_at|date:"H:i" }}</small>
+                                </span>
+                            </td>
+                            <td>
+                                {% if dn.grn_line.grn %}
+                                    <a href="{% url 'grn:grn_detail' dn.grn_line.grn.pk %}" 
+                                       class="btn btn-sm btn-outline-info" 
+                                       title="View GRN Details">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                {% endif %}
+                                {% if dn.remark %}
+                                    <button class="btn btn-sm btn-outline-secondary" 
+                                            title="Remark: {{ dn.remark }}" 
+                                            data-bs-toggle="tooltip">
+                                        <i class="fas fa-comment"></i>
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="11" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-inbox fa-2x mb-2"></i>
+                                    <p>No delivery notes found.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+    <nav aria-label="DN pagination" class="mt-3">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">&laquo; First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Previous</a>
+                </li>
+            {% endif %}
+
+            <li class="page-item active">
+                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            </li>
+
+            {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Last &raquo;</a>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- DataTables + Export Buttons CSS & JS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+
+<script>
+    $(document).ready(function () {
+        // Initialize tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+
+        // DataTable initialization
+        var table = $('#deliveryTable').DataTable({
+            dom: 'Bfrtip',
+            ordering: true,
+            paging: true,
+            searching: true,
+            pageLength: 25,
+            lengthMenu: [10, 25, 50, 100],
+            order: [[0, 'desc']], // order by DN ID
+            columnDefs: [
+                { targets: [0, 1, 2], type: 'num' }, // DN ID, GRN ID, Line #
+                { targets: [9], type: 'date' }, // Delivered Date
+                { targets: [-1], orderable: false, searchable: false } // Actions column
+            ],
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    title: 'Delivery Notes - {{ current_location.name|default:"All Locations" }}',
+                    exportOptions: { 
+                        columns: ':visible:not(:last-child)',
+                        format: {
+                            body: function (data, row, column, node) {
+                                // Strip HTML tags for export
+                                return $('<div>').html(data).text();
+                            }
+                        }
+                    }
+                },
+                {
+                    extend: 'pdfHtml5',
+                    title: 'Delivery Notes - {{ current_location.name|default:"All Locations" }}',
+                    orientation: 'landscape',
+                    pageSize: 'A4',
+                    exportOptions: { 
+                        columns: ':visible:not(:last-child)',
+                        format: {
+                            body: function (data, row, column, node) {
+                                // Strip HTML tags for export
+                                return $('<div>').html(data).text();
+                            }
+                        }
+                    }
+                },
+                {
+                    extend: 'print',
+                    title: 'Delivery Notes - {{ current_location.name|default:"All Locations" }}',
+                    exportOptions: { 
+                        columns: ':visible:not(:last-child)',
+                        format: {
+                            body: function (data, row, column, node) {
+                                // Strip HTML tags for export
+                                return $('<div>').html(data).text();
+                            }
+                        }
+                    }
+                }
+            ]
+        });
+
+        // Append buttons
+        table.buttons().container().appendTo('#tableButtons');
+
+        // Advanced filter toggle
+        $('#toggleAdvancedFilter').on('click', function () {
+            $('#advancedFilter').slideToggle();
+        });
+
+        // Date range filtering
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+            var min = $('#minDate').val();
+            var max = $('#maxDate').val();
+            var dateStr = data[9]; // Delivered Date column
+            
+            if (!min && !max) return true;
+            if (!dateStr || dateStr === '—') return !min && !max;
+
+            // Extract date from the formatted string (e.g., "Jan 15, 2024")
+            var dateMatch = dateStr.match(/(\w{3}) (\d{1,2}), (\d{4})/);
+            if (!dateMatch) return true;
+            
+            var months = {'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                         'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11};
+            var dateObj = new Date(parseInt(dateMatch[3]), months[dateMatch[1]], parseInt(dateMatch[2]));
+            
+            var minDate = min ? new Date(min) : null;
+            var maxDate = max ? new Date(max) : null;
+
+            if ((!minDate || dateObj >= minDate) && (!maxDate || dateObj <= maxDate)) {
+                return true;
+            }
+            return false;
+        });
+
+        // Parcel type filtering
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+            var parcelTypeFilter = $('#parcelTypeFilter').val();
+            if (!parcelTypeFilter) return true;
+            
+            var parcelTypeCell = data[6]; // Parcel Type column
+            return parcelTypeCell.toLowerCase().includes(parcelTypeFilter.toLowerCase());
+        });
+
+        // Courier filtering
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+            var courierFilter = $('#courierFilter').val();
+            if (!courierFilter) return true;
+            
+            var courierCell = data[7]; // Courier column
+            return courierCell.toLowerCase().includes(courierFilter.toLowerCase());
+        });
+
+        // Filter event handlers
+        $('#minDate, #maxDate, #parcelTypeFilter, #courierFilter').on('change keyup', function () {
+            table.draw();
+        });
+
+        // Update statistics when table is filtered
+        table.on('search.dt', function () {
+            var info = table.page.info();
+            $('#totalDeliveries').text(info.recordsDisplay);
+        });
+    });
+</script>
+
+<style>
+    .dataTables_filter {
+        text-align: right;
+    }
+    .dataTables_filter label {
+        font-weight: bold;
+        margin-bottom: 0;
+    }
+    .dataTables_filter input {
+        margin-left: 0.5rem;
+    }
+    #tableButtons {
+        margin-bottom: 10px;
+    }
+    #tableButtons .btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    .badge {
+        font-size: 0.75em;
+    }
+    .table td {
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
