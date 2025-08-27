@@ -15,55 +15,102 @@
     </div>
     {% endif %}
 
-    <!-- Advanced Filter -->
-    <div class="card mb-3">
-        <div class="card-body">
-            <div class="row justify-content-between">
-                <div class="col-md-6">
-                    <button id="toggleAdvancedFilter" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-filter"></i> Advanced Filter
-                    </button>
-                </div>
-            </div>
-            <div class="row mt-3" id="advancedFilter" style="display: none;">
-                <div class="col-md-3">
-                    <label for="minDate" class="form-label">From:</label>
-                    <input type="date" id="minDate" class="form-control form-control-sm">
-                </div>
-                <div class="col-md-3">
-                    <label for="maxDate" class="form-label">To:</label>
-                    <input type="date" id="maxDate" class="form-control form-control-sm">
-                </div>
-                <div class="col-md-3">
-                    <label for="parcelTypeFilter" class="form-label">Parcel Type:</label>
-                    <select id="parcelTypeFilter" class="form-select form-select-sm">
-                        <option value="">All Types</option>
-                        {% for choice in parcel_type_choices %}
-                            <option value="{{ choice.0 }}">{{ choice.1 }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="courierFilter" class="form-label">Courier:</label>
-                    <select id="courierFilter" class="form-select form-select-sm">
-                        <option value="">All Couriers</option>
-                        {% for choice in courier_choices %}
-                            <option value="{{ choice.0 }}">{{ choice.1 }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h6 class="mb-0">
+                <i class="fas fa-filter me-2"></i>Filters
+                <button class="btn btn-sm btn-outline-secondary float-end" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </h6>
         </div>
-    </div>
-
-    <!-- Statistics -->
-    <div class="row mb-3">
-        <div class="col-md-3">
-            <div class="card text-white bg-success">
-                <div class="card-body">
-                    <div class="card-title">Total Deliveries</div>
-                    <h4 id="totalDeliveries">{{ dns|length }}</h4>
-                </div>
+        <div class="collapse" id="filterCollapse">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Search</label>
+                        <input type="text" name="q" class="form-control" 
+                               value="{{ current_filters.q }}" 
+                               placeholder="DN ID, GRN ID, Sender, Receiver...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Start Date</label>
+                        <input type="date" name="start_date" class="form-control" 
+                               value="{{ current_filters.start_date }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">End Date</label>
+                        <input type="date" name="end_date" class="form-control" 
+                               value="{{ current_filters.end_date }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Parcel Type</label>
+                        <select name="parcel_type" class="form-select">
+                            <option value="">All Types</option>
+                            {% for value, label in parcel_type_choices %}
+                                <option value="{{ value }}" {% if current_filters.parcel_type == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Courier</label>
+                        <select name="courier" class="form-select">
+                            <option value="">All Couriers</option>
+                            {% for value, label in courier_choices %}
+                                <option value="{{ value }}" {% if current_filters.courier == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="row g-3">
+                            <div class="col-md-2">
+                                <label class="form-label">Phone</label>
+                                <input type="text" name="phone" class="form-control" 
+                                       value="{{ current_filters.phone }}" 
+                                       placeholder="Phone number">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Location</label>
+                                <input type="text" name="location" class="form-control" 
+                                       value="{{ current_filters.location }}" 
+                                       placeholder="Delivery location">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sender</label>
+                                <input type="text" name="sender" class="form-control" 
+                                       value="{{ current_filters.sender }}" 
+                                       placeholder="Sender name">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Receiver</label>
+                                <input type="text" name="receiver" class="form-control" 
+                                       value="{{ current_filters.receiver }}" 
+                                       placeholder="Receiver name">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">&nbsp;</label>
+                                <div class="d-grid">
+                                    <a href="{{ request.path }}" class="btn btn-outline-secondary">
+                                        <i class="fas fa-times me-2"></i>Clear
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -78,7 +125,7 @@
                         <tr>
                             <th>DN ID</th>
                             <th>GRN ID</th>
-                            <th>Line #</th>
+                            <th>parcel #</th>
                             <th>Sender</th>
                             <th>Receiver</th>
                             <th>Phone</th>
@@ -153,6 +200,9 @@
                                 <div class="text-muted">
                                     <i class="fas fa-inbox fa-2x mb-2"></i>
                                     <p>No delivery notes found.</p>
+                                    {% if current_filters.q or current_filters.start_date or current_filters.end_date %}
+                                        <small>No delivery notes match your current filters. Try adjusting your search criteria.</small>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -169,27 +219,46 @@
         <ul class="pagination justify-content-center">
             {% if page_obj.has_previous %}
                 <li class="page-item">
-                    <a class="page-link" href="?page=1{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">&laquo; First</a>
+                    <a class="page-link" href="?page=1{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">&laquo; First</a>
                 </li>
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Previous</a>
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">Previous</a>
                 </li>
             {% endif %}
 
-            <li class="page-item active">
-                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-            </li>
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">{{ num }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
 
             {% if page_obj.has_next %}
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Next</a>
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">Next</a>
                 </li>
                 <li class="page-item">
-                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, value in current_filters.items %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Last &raquo;</a>
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.items %}&{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% endif %}">Last &raquo;</a>
                 </li>
             {% endif %}
         </ul>
     </nav>
+
+    <div class="text-center">
+        <small class="text-muted">
+            {% if is_paginated %}
+                Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} 
+                of {{ page_obj.paginator.count }} entries
+            {% else %}
+                Total: {{ dns|length }} entries
+            {% endif %}
+        </small>
+    </div>
     {% endif %}
 </div>
 {% endblock %}
@@ -277,66 +346,27 @@
 
         // Append buttons
         table.buttons().container().appendTo('#tableButtons');
+    });
 
-        // Advanced filter toggle
-        $('#toggleAdvancedFilter').on('click', function () {
-            $('#advancedFilter').slideToggle();
-        });
-
-        // Date range filtering
-        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-            var min = $('#minDate').val();
-            var max = $('#maxDate').val();
-            var dateStr = data[9]; // Delivered Date column
-            
-            if (!min && !max) return true;
-            if (!dateStr || dateStr === '—') return !min && !max;
-
-            // Extract date from the formatted string (e.g., "Jan 15, 2024")
-            var dateMatch = dateStr.match(/(\w{3}) (\d{1,2}), (\d{4})/);
-            if (!dateMatch) return true;
-            
-            var months = {'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-                         'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11};
-            var dateObj = new Date(parseInt(dateMatch[3]), months[dateMatch[1]], parseInt(dateMatch[2]));
-            
-            var minDate = min ? new Date(min) : null;
-            var maxDate = max ? new Date(max) : null;
-
-            if ((!minDate || dateObj >= minDate) && (!maxDate || dateObj <= maxDate)) {
-                return true;
-            }
-            return false;
-        });
-
-        // Parcel type filtering
-        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-            var parcelTypeFilter = $('#parcelTypeFilter').val();
-            if (!parcelTypeFilter) return true;
-            
-            var parcelTypeCell = data[6]; // Parcel Type column
-            return parcelTypeCell.toLowerCase().includes(parcelTypeFilter.toLowerCase());
-        });
-
-        // Courier filtering
-        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-            var courierFilter = $('#courierFilter').val();
-            if (!courierFilter) return true;
-            
-            var courierCell = data[7]; // Courier column
-            return courierCell.toLowerCase().includes(courierFilter.toLowerCase());
-        });
-
-        // Filter event handlers
-        $('#minDate, #maxDate, #parcelTypeFilter, #courierFilter').on('change keyup', function () {
-            table.draw();
-        });
-
-        // Update statistics when table is filtered
-        table.on('search.dt', function () {
-            var info = table.page.info();
-            $('#totalDeliveries').text(info.recordsDisplay);
-        });
+    // Auto-expand filters if there are active filters
+    document.addEventListener('DOMContentLoaded', function() {
+        const hasFilters = {{ current_filters.q|yesno:"true,false" }} || 
+                          {{ current_filters.start_date|yesno:"true,false" }} || 
+                          {{ current_filters.end_date|yesno:"true,false" }} || 
+                          {{ current_filters.parcel_type|yesno:"true,false" }} || 
+                          {{ current_filters.courier|yesno:"true,false" }} || 
+                          {{ current_filters.phone|yesno:"true,false" }} || 
+                          {{ current_filters.location|yesno:"true,false" }} || 
+                          {{ current_filters.sender|yesno:"true,false" }} || 
+                          {{ current_filters.receiver|yesno:"true,false" }};
+        
+        if (hasFilters) {
+            const filterCollapse = document.getElementById('filterCollapse');
+            const bsCollapse = new bootstrap.Collapse(filterCollapse, {
+                toggle: false
+            });
+            bsCollapse.show();
+        }
     });
 </script>
 
@@ -363,6 +393,15 @@
     }
     .table td {
         vertical-align: middle;
+    }
+    .card-header h6 {
+        color: #495057;
+        font-weight: 600;
+    }
+    .form-label {
+        font-weight: 500;
+        color: #495057;
+        margin-bottom: 5px;
     }
 </style>
 {% endblock %}

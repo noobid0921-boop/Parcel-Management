@@ -28,48 +28,46 @@
             </div>
             <div class="card-body">
                 <div class="row">
+                    <!-- Receiver Details -->
                     <div class="col-md-6">
                         <h6><i class="fas fa-user me-2"></i>Receiver Details</h6>
-                        <table class="table table-sm table-borderless">
+                        <table class="table table-sm table-borderless align-middle">
                             <tr>
-                                <td><strong>Name:</strong></td>
+                                <td class="fw-bold text-nowrap" style="width: 80px;">Name:</td>
                                 <td>{{ grn.receiver.name }}</td>
                             </tr>
                             <tr>
-                                <td><strong>Username:</strong></td>
-                                <td>{{ grn.receiver.username }}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Email:</strong></td>
+                                <td class="fw-bold text-nowrap">Email:</td>
                                 <td>{{ grn.receiver.email }}</td>
                             </tr>
                             {% if grn.receiver.phone %}
                             <tr>
-                                <td><strong>Phone:</strong></td>
+                                <td class="fw-bold text-nowrap">Phone:</td>
                                 <td>{{ grn.receiver.phone }}</td>
                             </tr>
                             {% endif %}
                         </table>
                     </div>
+
+                    <!-- Delivery Information -->
                     <div class="col-md-6">
-                        <h6><i class="fas fa-map-marker-alt me-2"></i>Delivery Information</h6>
-                        <table class="table table-sm table-borderless">
+                        <table class="table table-sm table-borderless align-middle">
                             <tr>
-                                <td><strong>Location:</strong></td>
+                                <td class="fw-bold text-nowrap" style="width: 100px;">Location:</td>
                                 <td>{{ grn.delivery_location.name }}</td>
                             </tr>
                             {% if grn.place %}
                             <tr>
-                                <td><strong>Place:</strong></td>
+                                <td class="fw-bold text-nowrap">Place:</td>
                                 <td>{{ grn.place }}</td>
                             </tr>
                             {% endif %}
                             <tr>
-                                <td><strong>Created:</strong></td>
+                                <td class="fw-bold text-nowrap">Created:</td>
                                 <td>{{ grn.created_at|date:"M d, Y g:i A" }}</td>
                             </tr>
                             <tr>
-                                <td><strong>Status:</strong></td>
+                                <td class="fw-bold text-nowrap">Status:</td>
                                 <td>
                                     {% if grn.is_delivered %}
                                         <span class="badge bg-success">
@@ -81,10 +79,6 @@
                                         </span>
                                     {% endif %}
                                 </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Total Lines:</strong></td>
-                                <td><span class="badge bg-secondary">{{ grn.total_lines }}</span></td>
                             </tr>
                         </table>
                     </div>
@@ -116,9 +110,7 @@
                             <tbody>
                                 {% for line in grn_lines %}
                                     <tr {% if line.dn %}class="table-success"{% endif %}>
-                                        <td>
-                                            <strong>{{ line.line_number }}</strong>
-                                        </td>
+                                        <td><strong>{{ line.line_number }}</strong></td>
                                         <td>
                                             <div>
                                                 <strong>{{ line.sender_name|default:"Unknown" }}</strong>
