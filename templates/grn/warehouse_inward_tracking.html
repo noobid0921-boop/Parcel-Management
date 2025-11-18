@@ -1,0 +1,558 @@
+{% extends 'base.html' %}
+
+{% block title %}Warehouse Inward Tracking{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-route me-2"></i>Warehouse Inward Tracking</h2>
+        <div id="customExportButtons" class="btn-group" role="group">
+            <!-- DataTables export buttons will be inserted here -->
+        </div>
+    </div>
+
+    <!-- Info Alert -->
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Tracking Warehouse Inward Journey:</strong> This page shows the complete journey of parcels from warehouse receipt to final delivery - Stage 1 (Received), Stage 2 (On Floor), Stage 3 (Delivered).
+    </div>
+
+    <!-- Statistics Dashboard -->
+    <div class="card mb-4 bg-gradient-light">
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-boxes fa-2x text-primary mb-2"></i>
+                        <h3 class="text-primary mb-0">{{ total_inwards }}</h3>
+                        <small class="text-muted">Total Inwarded</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-download fa-2x text-warning mb-2"></i>
+                        <h3 class="text-warning mb-0">{{ received_count }}</h3>
+                        <small class="text-muted">Stage 1: Received</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-layer-group fa-2x text-info mb-2"></i>
+                        <h3 class="text-info mb-0">{{ on_floor_count }}</h3>
+                        <small class="text-muted">Stage 2: On Floor</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-box">
+                        <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                        <h3 class="text-success mb-0">{{ delivered_count }}</h3>
+                        <small class="text-muted">Stage 3: Delivered</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h6 class="mb-0">
+                <i class="fas fa-filter me-2"></i>Filters
+                <button class="btn btn-sm btn-outline-secondary float-end" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </h6>
+        </div>
+        <div class="collapse" id="filterCollapse">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <!-- Location Filter for Admin -->
+                    {% if user.is_staff or user.is_superuser %}
+                    <div class="col-md-12 mb-3">
+                        <div class="alert alert-light border">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-building me-1"></i>Filter by Receiver Location
+                                    </label>
+                                    <select name="location_filter" class="form-select">
+                                        <option value="">All Locations</option>
+                                        {% for loc in locations %}
+                                            <option value="{{ loc.id }}" 
+                                                {% if current_filters.location_filter == loc.id|stringformat:"s" %}selected{% endif %}>
+                                                {{ loc.name }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label">&nbsp;</label>
+                                    <div class="alert alert-info mb-0">
+                                        <small>
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            <strong>Tip:</strong> Filter by the location where items were received from warehouse (not the original warehouse location).
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Row 1 -->
+                    <div class="col-md-3">
+                        <label class="form-label">Search</label>
+                        <input type="text" name="q" class="form-control" 
+                               value="{{ current_filters.q }}" 
+                               placeholder="GRN ID, Sender, Receiver, Floor...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Stage</label>
+                        <select name="stage" class="form-select">
+                            <option value="">All Stages</option>
+                            <option value="received" {% if current_filters.stage == 'received' %}selected{% endif %}>
+                                📥 Stage 1: Received
+                            </option>
+                            <option value="on_floor" {% if current_filters.stage == 'on_floor' %}selected{% endif %}>
+                                📦 Stage 2: On Floor
+                            </option>
+                            <option value="delivered" {% if current_filters.stage == 'delivered' %}selected{% endif %}>
+                                ✅ Stage 3: Delivered
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Start Date</label>
+                        <input type="date" name="start_date" class="form-control" 
+                               value="{{ current_filters.start_date }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">End Date</label>
+                        <input type="date" name="end_date" class="form-control" 
+                               value="{{ current_filters.end_date }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Parcel Type</label>
+                        <select name="parcel_type" class="form-select">
+                            <option value="">All Types</option>
+                            {% for value, label in parcel_type_choices %}
+                                <option value="{{ value }}" {% if current_filters.parcel_type == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Row 2 -->
+                    <div class="col-md-3">
+                        <label class="form-label">From Warehouse</label>
+                        <input type="text" name="warehouse" class="form-control" 
+                               value="{{ current_filters.warehouse }}" 
+                               placeholder="Original warehouse name">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Received At</label>
+                        <input type="text" name="receiver_location" class="form-control" 
+                               value="{{ current_filters.receiver_location }}" 
+                               placeholder="Location name">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Floor</label>
+                        <input type="text" name="floor" class="form-control" 
+                               value="{{ current_filters.floor }}" 
+                               placeholder="Floor">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Rack</label>
+                        <input type="text" name="rack" class="form-control" 
+                               value="{{ current_filters.rack }}" 
+                               placeholder="Rack">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Receiver</label>
+                        <input type="text" name="receiver" class="form-control" 
+                               value="{{ current_filters.receiver }}" 
+                               placeholder="Receiver name">
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <a href="{{ request.path }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i>
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Section -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="inwardTable" class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>GRN ID</th>
+                            <th>Inwarded Date</th>
+                            <th>Journey</th>
+                            <th>Sender</th>
+                            <th>Receiver</th>
+                            <th>Parcel Type</th>
+                            <th>Stage</th>
+                            <th>Floor/Rack</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inward in inwards %}
+                        <tr>
+                            <!-- GRN ID -->
+                            <td data-order="{{ inward.grn_line.grn.id }}">
+                                <a href="{% url 'grn:grn_detail' inward.grn_line.grn.pk %}" class="text-decoration-none">
+                                    <strong>#{{ inward.grn_line.grn.id }}</strong>
+                                </a>
+                                <small class="d-block text-muted">Line {{ inward.grn_line.line_number }}</small>
+                            </td>
+
+                            <!-- Inwarded Date -->
+                            <td data-order="{{ inward.inwarded_at|date:'Y-m-d H:i:s' }}">
+                                {{ inward.inwarded_at|date:"M d, Y" }}
+                                <small class="text-muted d-block">{{ inward.inwarded_at|date:"H:i" }}</small>
+                            </td>
+
+                            <!-- Journey (From → To) -->
+                            <td>
+                                <div class="small">
+                                    <strong class="text-danger">
+                                        <i class="fas fa-warehouse me-1"></i>{{ inward.grn_line.grn.delivery_location.name }}
+                                    </strong>
+                                    <br>
+                                    <i class="fas fa-arrow-down text-muted"></i>
+                                    <br>
+                                    <strong class="text-success">
+                                        <i class="fas fa-map-marker-alt me-1"></i>{{ inward.inwarded_by.location.name|default:"Unknown" }}
+                                    </strong>
+                                </div>
+                            </td>
+
+                            <!-- Sender -->
+                            <td>{{ inward.grn_line.sender_name|default:"Unknown" }}</td>
+
+                            <!-- Receiver -->
+                            <td>
+                                {{ inward.grn_line.grn.receiver.name }}
+                                <small class="text-muted d-block">{{ inward.grn_line.grn.receiver.username }}</small>
+                            </td>
+
+                            <!-- Parcel Type -->
+                            <td>
+                                <span class="badge bg-info">
+                                    {{ inward.grn_line.get_parcel_type_display }}
+                                </span>
+                            </td>
+
+                            <!-- Stage -->
+                            <td>
+                                {% if inward.delivered_to_receiver %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle me-1"></i>Stage 3: Delivered
+                                    </span>
+                                    <small class="d-block text-muted mt-1">{{ inward.delivered_at|date:"M d, H:i" }}</small>
+                                {% elif inward.floor %}
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-layer-group me-1"></i>Stage 2: On Floor
+                                    </span>
+                                    <small class="d-block text-muted mt-1">{{ inward.assigned_to_floor_at|date:"M d, H:i" }}</small>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fas fa-download me-1"></i>Stage 1: Received
+                                    </span>
+                                    <small class="d-block text-muted mt-1">{{ inward.inwarded_at|date:"M d, H:i" }}</small>
+                                {% endif %}
+                            </td>
+
+                            <!-- Floor/Rack -->
+                            <td>
+                                {% if inward.floor %}
+                                    <strong><i class="fas fa-layer-group me-1"></i>{{ inward.floor }}</strong>
+                                    {% if inward.rack %}
+                                        <br><small class="text-muted"><i class="fas fa-box me-1"></i>{{ inward.rack }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Status Details -->
+                            <td>
+                                <div class="small">
+                                    {% if inward.delivered_to_receiver %}
+                                        <strong class="text-success">
+                                            <i class="fas fa-user-check me-1"></i>Collected
+                                        </strong>
+                                        <br><small class="text-muted">By: {{ inward.delivered_by.name }}</small>
+                                    {% elif inward.floor %}
+                                        <strong class="text-info">
+                                            <i class="fas fa-clock me-1"></i>Awaiting Collection
+                                        </strong>
+                                        <br><small class="text-muted">By: {{ inward.assigned_to_floor_by.name }}</small>
+                                    {% else %}
+                                        <strong class="text-warning">
+                                            <i class="fas fa-hourglass-half me-1"></i>Pending Floor
+                                        </strong>
+                                        <br><small class="text-muted">By: {{ inward.inwarded_by.name }}</small>
+                                    {% endif %}
+                                </div>
+                            </td>
+
+                            <!-- Actions -->
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'grn:grn_detail' inward.grn_line.grn.pk %}" 
+                                       class="btn btn-sm btn-outline-info" 
+                                       title="View GRN Details">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    {% if inward.inward_remark or inward.floor_remark or inward.delivery_remark %}
+                                        <button class="btn btn-sm btn-outline-secondary" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#remarkModal{{ inward.id }}"
+                                                title="View Remarks">
+                                            <i class="fas fa-comment"></i>
+                                        </button>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Remark Modal -->
+                                {% if inward.inward_remark or inward.floor_remark or inward.delivery_remark %}
+                                <div class="modal fade" id="remarkModal{{ inward.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Remarks - GRN #{{ inward.grn_line.grn.id }} Line {{ inward.grn_line.line_number }}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                {% if inward.inward_remark %}
+                                                <div class="mb-3">
+                                                    <strong><i class="fas fa-download text-warning me-1"></i>Inward Remark:</strong>
+                                                    <p class="ms-3">{{ inward.inward_remark }}</p>
+                                                </div>
+                                                {% endif %}
+                                                {% if inward.floor_remark %}
+                                                <div class="mb-3">
+                                                    <strong><i class="fas fa-layer-group text-info me-1"></i>Floor Remark:</strong>
+                                                    <p class="ms-3">{{ inward.floor_remark }}</p>
+                                                </div>
+                                                {% endif %}
+                                                {% if inward.delivery_remark %}
+                                                <div class="mb-3">
+                                                    <strong><i class="fas fa-check-circle text-success me-1"></i>Delivery Remark:</strong>
+                                                    <p class="ms-3">{{ inward.delivery_remark }}</p>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-inbox fa-2x mb-2"></i>
+                                    <p>No warehouse inward records found.</p>
+                                    {% if current_filters.q or current_filters.start_date or current_filters.stage %}
+                                        <small>No records match your current filters. Try adjusting your search criteria.</small>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+    <nav aria-label="Inward tracking pagination" class="mt-3">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">&laquo; First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Previous</a>
+                </li>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">Last &raquo;</a>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+
+    <div class="text-center">
+        <small class="text-muted">
+            Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} 
+            of {{ page_obj.paginator.count }} entries
+        </small>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- DataTables + Export Buttons -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
+
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+
+<script>
+$(document).ready(function () {
+    var currentDate = new Date().toLocaleDateString();
+
+    // DataTable initialization
+    var table = $('#inwardTable').DataTable({
+        dom: 'Bfrtip',
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                text: '<i class="fas fa-file-excel me-2"></i>Export Excel',
+                className: 'btn btn-success btn-sm',
+                title: 'Warehouse Inward Tracking - ' + currentDate,
+                exportOptions: { 
+                    columns: ':visible:not(:last-child)',
+                    format: {
+                        body: function (data, row, column, node) {
+                            var temp = $('<div>').html(data).text();
+                            return temp.trim();
+                        }
+                    }
+                }
+            },
+            {
+                extend: 'pdfHtml5',
+                text: '<i class="fas fa-file-pdf me-2"></i>Export PDF',
+                className: 'btn btn-danger btn-sm',
+                title: 'Warehouse Inward Tracking',
+                orientation: 'landscape',
+                pageSize: 'A4',
+                exportOptions: { 
+                    columns: ':visible:not(:last-child)',
+                    format: {
+                        body: function (data, row, column, node) {
+                            var temp = $('<div>').html(data).text();
+                            return temp.trim();
+                        }
+                    }
+                }
+            }
+        ],
+        ordering: true,
+        paging: true,
+        searching: true,
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        order: [[1, 'desc']],
+        columnDefs: [
+            { targets: [0], type: 'num' },
+            { targets: [1], type: 'date' },
+            { targets: [-1], orderable: false, searchable: false }
+        ],
+        language: {
+            search: "Search:",
+            lengthMenu: "Show _MENU_ entries",
+            info: "Showing _START_ to _END_ of _TOTAL_ Warehouse Inwards",
+            infoEmpty: "Showing 0 to 0 of 0 Warehouse Inwards",
+            infoFiltered: "(filtered from _MAX_ total entries)"
+        }
+    });
+
+    table.buttons().container().prependTo('#customExportButtons');
+});
+
+// Auto-expand filters if there are active filters
+document.addEventListener('DOMContentLoaded', function() {
+    const hasFilters = {{ current_filters.q|yesno:"true,false" }} || 
+                      {{ current_filters.start_date|yesno:"true,false" }} || 
+                      {{ current_filters.end_date|yesno:"true,false" }} || 
+                      {{ current_filters.stage|yesno:"true,false" }} || 
+                      {{ current_filters.warehouse|yesno:"true,false" }} || 
+                      {{ current_filters.floor|yesno:"true,false" }} || 
+                      {{ current_filters.location_filter|yesno:"true,false" }};
+    
+    if (hasFilters) {
+        const filterCollapse = document.getElementById('filterCollapse');
+        const bsCollapse = new bootstrap.Collapse(filterCollapse, {
+            toggle: false
+        });
+        bsCollapse.show();
+    }
+});
+</script>
+
+<style>
+    .stat-box {
+        padding: 15px;
+        border-radius: 8px;
+        background: white;
+        transition: transform 0.2s;
+    }
+    .stat-box:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .bg-gradient-light {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    .table td {
+        vertical-align: middle;
+    }
+    .badge {
+        font-size: 0.75em;
+    }
+</style>
+{% endblock %}

@@ -6,13 +6,18 @@
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2><i class="fas fa-file-alt me-2"></i>GRN #{{ grn.id }} Details</h2>
+            <h2>
+                <i class="fas fa-file-alt me-2"></i>GRN #{{ grn.id }} Details
+                {% if grn.delivery_location.is_warehouse %}
+                    <span class="badge bg-info">Warehouse</span>
+                {% endif %}
+            </h2>
             <div>
                 <a href="{% url 'grn:grn_list' %}" class="btn btn-secondary">
                     <i class="fas fa-arrow-left me-2"></i>Back to List
                 </a>
                 {% if user.is_staff or user.is_superuser %}
-                    {% if not grn.is_delivered %}
+                    {% if not grn.is_delivered and grn.pending_inward_count == grn.total_lines %}
                         <button type="button" class="btn btn-outline-danger ms-2" onclick="confirmDelete('{{ grn.id }}', '{{ grn.total_lines }}')">
                             <i class="fas fa-trash me-2"></i>Delete GRN
                         </button>
@@ -21,6 +26,17 @@
             </div>
         </div>
 
+        <!-- Inward Status Alert (for warehouse GRNs) -->
+        {% if grn.delivery_location.is_warehouse %}
+            <div class="alert {% if grn.is_fully_inwarded %}alert-success{% elif grn.inwarded_count > 0 %}alert-warning{% else %}alert-info{% endif %}">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Inward Status:</strong> {{ grn.inward_status }}
+                {% if grn.inwarded_count > 0 %}
+                    <br><small>{{ grn.inwarded_count }} of {{ grn.total_lines }} items have been transferred to other locations. {{ grn.pending_inward_count }} items remain at this warehouse.</small>
+                {% endif %}
+            </div>
+        {% endif %}
+
         <!-- GRN Header Information -->
         <div class="card mb-4">
             <div class="card-header bg-primary text-white">
@@ -28,46 +44,55 @@
             </div>
             <div class="card-body">
                 <div class="row">
-                    <!-- Receiver Details -->
                     <div class="col-md-6">
                         <h6><i class="fas fa-user me-2"></i>Receiver Details</h6>
-                        <table class="table table-sm table-borderless align-middle">
+                        <table class="table table-sm table-borderless">
                             <tr>
-                                <td class="fw-bold text-nowrap" style="width: 80px;">Name:</td>
+                                <td><strong>Name:</strong></td>
                                 <td>{{ grn.receiver.name }}</td>
                             </tr>
                             <tr>
-                                <td class="fw-bold text-nowrap">Email:</td>
+                                <td><strong>Email:</strong></td>
                                 <td>{{ grn.receiver.email }}</td>
                             </tr>
                             {% if grn.receiver.phone %}
                             <tr>
-                                <td class="fw-bold text-nowrap">Phone:</td>
+                                <td><strong>Phone:</strong></td>
                                 <td>{{ grn.receiver.phone }}</td>
                             </tr>
                             {% endif %}
                         </table>
                     </div>
-
-                    <!-- Delivery Information -->
                     <div class="col-md-6">
-                        <table class="table table-sm table-borderless align-middle">
+                        <h6><i class="fas fa-map-marker-alt me-2"></i>Delivery Information</h6>
+                        <table class="table table-sm table-borderless">
                             <tr>
-                                <td class="fw-bold text-nowrap" style="width: 100px;">Location:</td>
-                                <td>{{ grn.delivery_location.name }}</td>
+                                <td><strong>Location:</strong></td>
+                                <td>
+                                    {{ grn.delivery_location.name }}
+                                    {% if grn.delivery_location.is_warehouse %}
+                                        <span class="badge bg-info">Warehouse</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% if grn.place %}
                             <tr>
-                                <td class="fw-bold text-nowrap">Place:</td>
+                                <td><strong>Place/Notes:</strong></td>
                                 <td>{{ grn.place }}</td>
                             </tr>
                             {% endif %}
+                            {% if grn.created_by %}
                             <tr>
-                                <td class="fw-bold text-nowrap">Created:</td>
+                                <td><strong>Created By:</strong></td>
+                                <td>{{ grn.created_by.name }}</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>Created:</strong></td>
                                 <td>{{ grn.created_at|date:"M d, Y g:i A" }}</td>
                             </tr>
                             <tr>
-                                <td class="fw-bold text-nowrap">Status:</td>
+                                <td><strong>Status:</strong></td>
                                 <td>
                                     {% if grn.is_delivered %}
                                         <span class="badge bg-success">
@@ -80,9 +105,79 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                            <tr>
+                                <td><strong>Total Lines:</strong></td>
+                                <td><span class="badge bg-secondary">{{ grn.total_lines }}</span></td>
+                            </tr>
+                            {% if grn.delivery_location.is_warehouse %}
+                            <tr>
+                                <td><strong>Inwarded:</strong></td>
+                                <td>
+                                    <span class="badge bg-success">{{ grn.inwarded_count }}</span> /
+                                    <span class="badge bg-secondary">{{ grn.total_lines }}</span>
+                                    {% if grn.pending_inward_count > 0 %}
+                                        <br><small class="text-muted">{{ grn.pending_inward_count }} pending</small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
                         </table>
                     </div>
                 </div>
+
+                <!-- OTP Information -->
+                {% if grn.otp %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="alert {% if grn.otp.valid and not grn.otp.is_expired %}alert-success{% else %}alert-secondary{% endif %}">
+                            <h6><i class="fas fa-key me-2"></i>OTP Information</h6>
+                            <table class="table table-sm table-borderless mb-0">
+                                <tr>
+                                    <td><strong>OTP Code:</strong></td>
+                                    <td><code class="{% if grn.otp.valid and not grn.otp.is_expired %}text-success{% else %}text-muted{% endif %}">{{ grn.otp.otp }}</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Status:</strong></td>
+                                    <td>
+                                        {% if grn.otp.valid and not grn.otp.is_expired %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% elif grn.otp.is_expired %}
+                                            <span class="badge bg-danger">Expired</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Used</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Created:</strong></td>
+                                    <td>{{ grn.otp.created_at|date:"M d, Y g:i A" }}</td>
+                                </tr>
+                                {% if grn.otp.valid and not grn.otp.is_expired %}
+                                <tr>
+                                    <td><strong>Expires:</strong></td>
+                                    <td>{{ grn.otp.expiry_datetime|date:"M d, Y g:i A" }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                            {% if user.is_staff or user.is_superuser %}
+                                {% if not grn.is_delivered %}
+                                    <div class="mt-2">
+                                        <a href="{% url 'grn:otp_verify' %}?grn_id={{ grn.id }}" class="btn btn-sm btn-success">
+                                            <i class="fas fa-key me-1"></i>Verify OTP & Deliver All
+                                        </a>
+                                        <form method="post" action="{% url 'grn:resend_otp' grn.id %}" style="display: inline;" class="ms-2">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-info" onclick="return confirm('Resend OTP to {{ grn.receiver.email }}?')">
+                                                <i class="fas fa-redo me-1"></i>Resend OTP
+                                            </button>
+                                        </form>
+                                    </div>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -102,15 +197,18 @@
                                     <th>Contact</th>
                                     <th>Courier</th>
                                     <th>Parcel Type</th>
-                                    <th>OTP</th>
                                     <th>Status</th>
-                                    <th>Actions</th>
+                                    {% if grn.delivery_location.is_warehouse %}
+                                        <th>Inward Information</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for line in grn_lines %}
-                                    <tr {% if line.dn %}class="table-success"{% endif %}>
-                                        <td><strong>{{ line.line_number }}</strong></td>
+                                    <tr {% if line.dn %}class="table-success"{% elif line.warehouse_inward %}class="table-warning"{% endif %}>
+                                        <td>
+                                            <strong>{{ line.line_number }}</strong>
+                                        </td>
                                         <td>
                                             <div>
                                                 <strong>{{ line.sender_name|default:"Unknown" }}</strong>
@@ -145,21 +243,6 @@
                                             {% endif %}
                                         </td>
                                         <td>
-                                            {% if line.otp %}
-                                                {% if line.otp.valid and not line.otp.is_expired %}
-                                                    <code class="text-success">{{ line.otp.otp }}</code>
-                                                    <br><small class="text-muted">Valid</small>
-                                                {% else %}
-                                                    <code class="text-muted">{{ line.otp.otp }}</code>
-                                                    <br><small class="text-danger">
-                                                        {% if line.otp.is_expired %}Expired{% else %}Used{% endif %}
-                                                    </small>
-                                                {% endif %}
-                                            {% else %}
-                                                <span class="text-muted">No OTP</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
                                             {% if line.dn %}
                                                 <span class="badge bg-success">
                                                     <i class="fas fa-check me-1"></i>Delivered
@@ -167,27 +250,50 @@
                                                 <br><small class="text-muted">
                                                     {{ line.dn.created_at|date:"M d, Y g:i A" }}
                                                 </small>
+                                                {% if line.dn.remark %}
+                                                    <br><small class="text-muted fst-italic">{{ line.dn.remark|truncatewords:8 }}</small>
+                                                {% endif %}
+                                            {% elif line.warehouse_inward %}
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="fas fa-arrow-right me-1"></i>Inwarded
+                                                </span>
+                                                <br><small class="text-muted">
+                                                    {{ line.warehouse_inward.inwarded_at|date:"M d, Y g:i A" }}
+                                                </small>
                                             {% else %}
-                                                <span class="badge bg-warning">
-                                                    <i class="fas fa-clock me-1"></i>Pending
+                                                <span class="badge bg-primary">
+                                                    <i class="fas fa-clock me-1"></i>At Warehouse
                                                 </span>
                                             {% endif %}
                                         </td>
+                                        {% if grn.delivery_location.is_warehouse %}
                                         <td>
-                                            {% if user.is_staff or user.is_superuser %}
-                                                {% if not line.dn %}
-                                                    <a href="{% url 'grn:otp_verify' %}?grn_line_id={{ line.id }}" 
-                                                       class="btn btn-sm btn-primary" 
-                                                       title="Verify OTP & Deliver">
-                                                        <i class="fas fa-key"></i>
-                                                    </a>
-                                                {% else %}
-                                                    <span class="text-muted">
-                                                        <i class="fas fa-check-circle"></i>
-                                                    </span>
-                                                {% endif %}
+                                            {% if line.warehouse_inward %}
+                                                <div class="small">
+                                                    <strong><i class="fas fa-map-marker-alt me-1 text-success"></i>Transferred To:</strong><br>
+                                                    <span class="badge bg-success mb-1">{{ line.warehouse_inward.inwarded_by.location.name|default:"Unknown Location" }}</span>
+                                                    <br>
+                                                    <strong><i class="fas fa-user me-1 text-primary"></i>Processed By:</strong><br>
+                                                    {{ line.warehouse_inward.inwarded_by.name }}
+                                                    <br>
+                                                    <strong><i class="fas fa-clock me-1 text-muted"></i>When:</strong><br>
+                                                    {{ line.warehouse_inward.inwarded_at|date:"M d, Y g:i A" }}
+                                                    {% if line.warehouse_inward.inward_remark %}
+                                                        <br>
+                                                        <strong><i class="fas fa-comment me-1 text-info"></i>Remark:</strong><br>
+                                                        <em class="text-muted">{{ line.warehouse_inward.inward_remark }}</em>
+                                                    {% endif %}
+                                                    {% if line.warehouse_inward.floor %}
+                                                        <br>
+                                                        <strong><i class="fas fa-layer-group me-1 text-info"></i>Floor:</strong> {{ line.warehouse_inward.floor }}
+                                                        {% if line.warehouse_inward.rack %}/ <strong>Rack:</strong> {{ line.warehouse_inward.rack }}{% endif %}
+                                                    {% endif %}
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted">—</span>
                                             {% endif %}
                                         </td>
+                                        {% endif %}
                                     </tr>
                                 {% endfor %}
                             </tbody>
@@ -217,6 +323,12 @@
             <div class="modal-body">
                 <p>Are you sure you want to delete GRN #<span id="delete-grn-id"></span>?</p>
                 <p>This will also delete <strong><span id="delete-lines-count"></span> parcel line(s)</strong> and cannot be undone.</p>
+                {% if grn.inwarded_count > 0 %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Warning:</strong> {{ grn.inwarded_count }} item(s) from this GRN have already been inwarded. You can only delete GRNs where no items have been processed.
+                    </div>
+                {% endif %}
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
@@ -224,7 +336,7 @@
                 </button>
                 <form id="delete-form" method="post" class="d-inline">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-danger">
+                    <button type="submit" class="btn btn-danger" {% if grn.inwarded_count > 0 %}disabled{% endif %}>
                         <i class="fas fa-trash me-2"></i>Delete GRN
                     </button>
                 </form>
@@ -245,4 +357,14 @@ function confirmDelete(grnId, linesCount) {
     modal.show();
 }
 </script>
+
+<style>
+.table-success {
+    background-color: #d1f2dd !important;
+}
+
+.table-warning {
+    background-color: #fff3cd !important;
+}
+</style>
 {% endblock %}

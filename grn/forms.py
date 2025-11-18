@@ -94,7 +94,7 @@ class OTPVerificationForm(forms.Form):
         label='OTP Code'
     )
     
-    grn_line_id = forms.CharField(
+    grn_id = forms.CharField(
         widget=forms.HiddenInput(),
         required=False
     )

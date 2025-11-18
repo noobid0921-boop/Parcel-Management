@@ -7,11 +7,17 @@
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2><i class="fas fa-list me-2"></i>GRN List</h2>
-            {% if user.is_staff or user.is_superuser %}
-                <a href="{% url 'grn:grn_create' %}" class="btn btn-primary">
-                    <i class="fas fa-plus me-2"></i>Create New GRN
-                </a>
-            {% endif %}
+            <div class="d-flex gap-2">
+                <!-- Export Buttons Container -->
+                <div id="customExportButtons" class="btn-group" role="group">
+                    <!-- DataTables buttons will be inserted here -->
+                </div>
+                {% if user.is_staff or user.is_superuser %}
+                    <a href="{% url 'grn:grn_create' %}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Create New GRN
+                    </a>
+                {% endif %}
+            </div>
         </div>
 
         <!-- Filters -->
@@ -71,27 +77,32 @@
                             </div>
                         </div>
                         <div class="col-md-12">
-                            <div class="col-md-2">
-                                <label class="form-label">Courier</label>
-                                <select name="courier" class="form-select">
-                                    <option value="">All Couriers</option>
-                                    {% for value, label in courier_choices %}
-                                        <option value="{{ value }}" {% if current_filters.courier == value %}selected{% endif %}>
-                                            {{ label }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Phone</label>
-                                <input type="text" name="phone" class="form-control" 
-                                       value="{{ current_filters.phone }}" 
-                                       placeholder="Phone number">
-                            </div>
-                            <div class="col-md-2">
-                                <a href="{% url 'grn:grn_list' %}" class="btn btn-outline-secondary">
-                                    <i class="fas fa-times me-2"></i>Clear Filters
-                                </a>
+                            <div class="row g-3">
+                                <div class="col-md-2">
+                                    <label class="form-label">Courier</label>
+                                    <select name="courier" class="form-select">
+                                        <option value="">All Couriers</option>
+                                        {% for value, label in courier_choices %}
+                                            <option value="{{ value }}" {% if current_filters.courier == value %}selected{% endif %}>
+                                                {{ label }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Phone</label>
+                                    <input type="text" name="phone" class="form-control" 
+                                           value="{{ current_filters.phone }}" 
+                                           placeholder="Phone number">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">&nbsp;</label>
+                                    <div class="d-grid">
+                                        <a href="{% url 'grn:grn_list' %}" class="btn btn-outline-secondary">
+                                            <i class="fas fa-times me-2"></i>Clear Filters
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -112,7 +123,7 @@
             <div class="card-body">
                 {% if grns %}
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table id="grnTable" class="table table-hover">
                             <thead class="table-dark">
                                 <tr>
                                     <th>GRN ID</th>
@@ -120,6 +131,7 @@
                                     <th>Location</th>
                                     <th>Total Parcel</th>
                                     <th>Status</th>
+                                    <th>OTP Status</th>
                                     <th>Created Date</th>
                                     <th>Actions</th>
                                 </tr>
@@ -127,43 +139,48 @@
                             <tbody>
                                 {% for grn in grns %}
                                     <tr>
-                                        <td>
+                                        <td data-order="{{ grn.id }}">
                                             <strong>#{{ grn.id }}</strong>
                                         </td>
                                         <td>
-                                            <div>
-                                                <strong>{{ grn.receiver.name }}</strong>
-                                                <br>
-                                                <small class="text-muted">{{ grn.receiver.username }}</small>
-                                            </div>
+                                            {{ grn.receiver.name }}
+                                            <small class="text-muted d-block">{{ grn.receiver.username }}</small>
                                         </td>
                                         <td>
-                                            <i class="fas fa-map-marker-alt text-muted me-1"></i>
                                             {{ grn.delivery_location.name }}
                                             {% if grn.place %}
-                                                <br><small class="text-muted">{{ grn.place }}</small>
+                                                <small class="text-muted d-block">{{ grn.place }}</small>
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <span class="badge bg-secondary">{{ grn.total_lines }} parcel</span>
+                                            {{ grn.total_lines }}
                                         </td>
                                         <td>
                                             {% if grn.is_delivered %}
-                                                <span class="badge bg-success">
-                                                    <i class="fas fa-check me-1"></i>Delivered
-                                                </span>
+                                                <span class="badge bg-success">Delivered</span>
                                             {% else %}
-                                                <span class="badge bg-warning">
-                                                    <i class="fas fa-clock me-1"></i>Pending
-                                                </span>
+                                                <span class="badge bg-warning">Pending</span>
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <div>
-                                                {{ grn.created_at|date:"M d, Y" }}
-                                                <br>
-                                                <small class="text-muted">{{ grn.created_at|time:"g:i A" }}</small>
-                                            </div>
+                                            {% if grn.otp %}
+                                                {% if grn.otp.valid and not grn.otp.is_expired %}
+                                                    <span class="badge bg-success">Active</span>
+                                                    <small class="text-muted d-block">{{ grn.otp.otp }}</small>
+                                                {% elif grn.otp.is_expired %}
+                                                    <span class="badge bg-danger">Expired</span>
+                                                    <small class="text-muted d-block">{{ grn.otp.otp }}</small>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Used</span>
+                                                    <small class="text-muted d-block">{{ grn.otp.otp }}</small>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-warning">No OTP</span>
+                                            {% endif %}
+                                        </td>
+                                        <td data-order="{{ grn.created_at|date:'Y-m-d H:i:s' }}">
+                                            {{ grn.created_at|date:"M d, Y" }}
+                                            <small class="text-muted d-block">{{ grn.created_at|time:"g:i A" }}</small>
                                         </td>
                                         <td>
                                             <div class="btn-group" role="group">
@@ -174,6 +191,24 @@
                                                 </a>
                                                 {% if user.is_staff or user.is_superuser %}
                                                     {% if not grn.is_delivered %}
+                                                        {% if grn.otp and grn.otp.valid and not grn.otp.is_expired %}
+                                                            <a href="{% url 'grn:otp_verify' %}?grn_id={{ grn.id }}" 
+                                                               class="btn btn-sm btn-outline-success" 
+                                                               title="Verify OTP & Deliver All">
+                                                                <i class="fas fa-key"></i>
+                                                            </a>
+                                                        {% endif %}
+                                                        <!-- Resend OTP Button -->
+                                                        <form method="post" action="{% url 'grn:resend_otp' grn.id %}" style="display: inline;">
+                                                            {% csrf_token %}
+                                                            <button type="submit" 
+                                                                    class="btn btn-sm btn-outline-info" 
+                                                                    title="Resend OTP to {{ grn.receiver.email }}"
+                                                                    onclick="return confirm('Resend OTP to {{ grn.receiver.email }}?')">
+                                                                <i class="fas fa-redo"></i>
+                                                            </button>
+                                                        </form>
+                                                        <!-- Delete Button -->
                                                         <button type="button" 
                                                                 class="btn btn-sm btn-outline-danger" 
                                                                 title="Delete GRN"
@@ -296,7 +331,122 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- DataTables + Export Buttons CSS & JS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
+
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+
 <script>
+$(document).ready(function () {
+    // Get current location name
+    var locationName = '{{ current_location.name|default:"All Locations" }}';
+    var currentDate = new Date().toLocaleDateString();
+
+    // DataTable initialization with buttons
+    var table = $('#grnTable').DataTable({
+        dom: 'Bfrtip',
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                text: '<i class="fas fa-file-excel me-2"></i>Export Excel',
+                className: 'btn btn-success btn-sm',
+                title: 'GRN List - ' + locationName + ' - ' + currentDate,
+                exportOptions: { 
+                    columns: ':visible:not(:last-child)',
+                    format: {
+                        body: function (data, row, column, node) {
+                            // Strip HTML tags and get plain text
+                            var temp = $('<div>').html(data).text();
+                            return temp.trim();
+                        }
+                    }
+                },
+                customize: function(xlsx) {
+                    var sheet = xlsx.xl.worksheets['sheet1.xml'];
+                    // Make header row bold
+                    $('row:first c', sheet).attr('s', '2');
+                }
+            },
+            {
+                extend: 'pdfHtml5',
+                text: '<i class="fas fa-file-pdf me-2"></i>Export PDF',
+                className: 'btn btn-danger btn-sm',
+                title: 'GRN List - ' + locationName,
+                orientation: 'landscape',
+                pageSize: 'A4',
+                exportOptions: { 
+                    columns: ':visible:not(:last-child)',
+                    format: {
+                        body: function (data, row, column, node) {
+                            // Strip HTML tags and get plain text
+                            var temp = $('<div>').html(data).text();
+                            return temp.trim();
+                        }
+                    }
+                },
+                customize: function(doc) {
+                    // Add custom styling to PDF
+                    doc.content[0].text = 'GRN List Report';
+                    doc.content[0].style = 'header';
+                    
+                    // Add subtitle with location and date
+                    doc.content.splice(1, 0, {
+                        text: [
+                            { text: 'Location: ' + locationName + '\n', bold: true },
+                            { text: 'Generated: ' + currentDate + '\n\n', fontSize: 10 }
+                        ],
+                        alignment: 'left',
+                        margin: [0, 0, 0, 12]
+                    });
+                    
+                    // Style the table
+                    doc.styles.tableHeader = {
+                        bold: true,
+                        fontSize: 11,
+                        color: 'white',
+                        fillColor: '#2d3748',
+                        alignment: 'center'
+                    };
+                    
+                    doc.defaultStyle.fontSize = 9;
+                    doc.content[2].table.widths = Array(doc.content[2].table.body[0].length).fill('auto');
+                }
+            }
+        ],
+        ordering: true,
+        paging: true,
+        searching: true,
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        order: [[0, 'desc']], // order by GRN ID descending
+        columnDefs: [
+            { targets: [0, 3], type: 'num' }, // GRN ID, Total Parcel
+            { targets: [6], type: 'date' },   // Created Date
+            { targets: [-1], orderable: false, searchable: false } // Actions
+        ],
+        language: {
+            search: "Search GRN:",
+            lengthMenu: "Show _MENU_ entries",
+            info: "Showing _START_ to _END_ of _TOTAL_ GRNs",
+            infoEmpty: "Showing 0 to 0 of 0 GRNs",
+            infoFiltered: "(filtered from _MAX_ total entries)"
+        }
+    });
+
+    // Move buttons to custom header location
+    table.buttons().container().prependTo('#customExportButtons');
+});
+
 function confirmDelete(grnId, linesCount) {
     document.getElementById('delete-grn-id').textContent = grnId;
     document.getElementById('delete-lines-count').textContent = linesCount;
@@ -325,4 +475,39 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<style>
+    .dataTables_filter {
+        text-align: right;
+    }
+    .dataTables_filter label {
+        font-weight: bold;
+        margin-bottom: 0;
+    }
+    .dataTables_filter input {
+        margin-left: 0.5rem;
+    }
+    .badge {
+        font-size: 0.75em;
+    }
+    .table td {
+        vertical-align: middle;
+    }
+    .card-header h6 {
+        color: #495057;
+        font-weight: 600;
+    }
+    .form-label {
+        font-weight: 500;
+        color: #495057;
+        margin-bottom: 5px;
+    }
+    /* Style DataTables buttons */
+    .dt-buttons {
+        gap: 5px;
+    }
+    .dt-button {
+        margin-left: 5px !important;
+    }
+</style>
 {% endblock %}

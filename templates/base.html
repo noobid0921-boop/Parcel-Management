@@ -72,6 +72,17 @@
                         </li>
                     {% endif %}
                     <li class="nav-item">
+                        <a class="nav-link" href="{% url 'grn:warehouse_grn_list' %}">
+                            <i class="fas fa-warehouse me-2"></i>Warehouse GRNs
+                        </a>
+                    </li>
+                    <!-- NEW: Warehouse Inward Tracking Link -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'grn:warehouse_inward_tracking' %}">
+                            <i class="fas fa-route me-2"></i>Inward Tracking
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="{% url 'grn:dn_list' %}">
                             <i class="fas fa-truck me-2"></i>Deliveries
                         </a>
