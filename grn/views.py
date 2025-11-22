@@ -1683,7 +1683,8 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
         })
         
         return context
-
+    def Hello_There(self):
+        pass
     def get_current_filters(self):
         """Get current filter values to maintain state"""
         return {
