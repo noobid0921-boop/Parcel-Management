@@ -198,16 +198,13 @@
                                                                 <i class="fas fa-key"></i>
                                                             </a>
                                                         {% endif %}
-                                                        <!-- Resend OTP Button -->
-                                                        <form method="post" action="{% url 'grn:resend_otp' grn.id %}" style="display: inline;">
-                                                            {% csrf_token %}
-                                                            <button type="submit" 
-                                                                    class="btn btn-sm btn-outline-info" 
-                                                                    title="Resend OTP to {{ grn.receiver.email }}"
-                                                                    onclick="return confirm('Resend OTP to {{ grn.receiver.email }}?')">
-                                                                <i class="fas fa-redo"></i>
-                                                            </button>
-                                                        </form>
+                                                        <!-- Resend OTP Button with Modal -->
+                                                        <button type="button" 
+                                                                class="btn btn-sm btn-outline-info" 
+                                                                title="Resend OTP to {{ grn.receiver.email }}"
+                                                                onclick="confirmResendOtp('{{ grn.id }}', '{{ grn.receiver.email }}', '{{ grn.receiver.name }}')">
+                                                            <i class="fas fa-redo"></i>
+                                                        </button>
                                                         <!-- Delete Button -->
                                                         <button type="button" 
                                                                 class="btn btn-sm btn-outline-danger" 
@@ -295,6 +292,35 @@
                         {% endif %}
                     </div>
                 {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resend OTP Confirmation Modal -->
+<div class="modal fade" id="resendOtpModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-redo me-2"></i>Confirm Resend OTP
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to resend OTP for GRN #<span id="resend-grn-id"></span>?</p>
+                <p>A new OTP will be sent to <strong><span id="resend-receiver-email"></span></strong> and cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <form id="resend-otp-form" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-info">
+                        <i class="fas fa-redo me-2"></i>Resend OTP
+                    </button>
+                </form>
             </div>
         </div>
     </div>
@@ -447,6 +473,17 @@ $(document).ready(function () {
     table.buttons().container().prependTo('#customExportButtons');
 });
 
+// Resend OTP confirmation function
+function confirmResendOtp(grnId, receiverEmail, receiverName) {
+    document.getElementById('resend-grn-id').textContent = grnId;
+    document.getElementById('resend-receiver-email').textContent = receiverEmail;
+    document.getElementById('resend-otp-form').action = '/grn/resend-otp/' + grnId + '/';
+    
+    const modal = new bootstrap.Modal(document.getElementById('resendOtpModal'));
+    modal.show();
+}
+
+// Delete confirmation function
 function confirmDelete(grnId, linesCount) {
     document.getElementById('delete-grn-id').textContent = grnId;
     document.getElementById('delete-lines-count').textContent = linesCount;

@@ -25,7 +25,7 @@ class CustomUser(AbstractUser):
         on_delete=models.CASCADE, 
         null=True, 
         blank=True,
-        related_name='users'  # Added for cleaner reverse lookups
+        related_name='users'
     )
     
     is_warehouse_user = models.BooleanField(
@@ -61,35 +61,61 @@ class GRN(models.Model):
     
     place = models.CharField(max_length=255, blank=True, null=True)
     
+    # Soft delete fields
+    valid = models.BooleanField(
+        default=True,
+        help_text="If False, this GRN is considered deleted and won't show in frontend"
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when the GRN was marked as deleted"
+    )
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_grns',
+        help_text="User who deleted this GRN"
+    )
+    
     def __str__(self):
-        return f"GRN {self.id} - {self.receiver}"
+        status = " [DELETED]" if not self.valid else ""
+        return f"GRN {self.id} - {self.receiver}{status}"
     
     @property
     def total_lines(self):
-        """Get total number of lines in this GRN"""
-        return self.lines.count()
+        """Get total number of VALID lines in this GRN"""
+        return self.lines.filter(valid=True).count()
     
     @property
     def is_delivered(self):
-        """Check if all lines in this GRN are delivered"""
-        return self.lines.filter(dn__isnull=True).count() == 0
+        """Check if all VALID lines in this GRN are delivered"""
+        valid_lines = self.lines.filter(valid=True)
+        if valid_lines.count() == 0:
+            return False
+        return valid_lines.filter(dn__isnull=True).count() == 0
     
     @property
     def is_fully_inwarded(self):
-        """Check if all lines in this GRN are inwarded (for warehouse locations)"""
-        return self.lines.filter(warehouse_inward__isnull=False).count() == self.total_lines
+        """Check if all VALID lines in this GRN are inwarded (for warehouse locations)"""
+        valid_lines = self.lines.filter(valid=True)
+        if valid_lines.count() == 0:
+            return False
+        return valid_lines.filter(warehouse_inward__isnull=False).count() == valid_lines.count()
     
     @property
     def inwarded_count(self):
-        """Get count of inwarded lines"""
-        return self.lines.filter(warehouse_inward__isnull=False).count()
+        """Get count of VALID inwarded lines"""
+        return self.lines.filter(valid=True, warehouse_inward__isnull=False).count()
     
     @property
     def pending_inward_count(self):
-        """Get count of lines pending inward (for warehouse locations)"""
+        """Get count of VALID lines pending inward (for warehouse locations)"""
         if not self.delivery_location or not self.delivery_location.is_warehouse:
             return 0
-        return self.lines.filter(warehouse_inward__isnull=True).count()
+        return self.lines.filter(valid=True, warehouse_inward__isnull=True).count()
     
     @property
     def inward_status(self):
@@ -100,12 +126,36 @@ class GRN(models.Model):
         total = self.total_lines
         inwarded = self.inwarded_count
         
-        if inwarded == 0:
+        if total == 0:
+            return "No Valid Lines"
+        elif inwarded == 0:
             return "Pending Inward"
         elif inwarded == total:
             return "Fully Inwarded"
         else:
             return f"Partially Inwarded ({inwarded}/{total})"
+    
+    def soft_delete(self, user=None):
+        """Soft delete this GRN and all its lines"""
+        self.valid = False
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save()
+        
+        # Also soft delete all lines
+        for line in self.lines.all():
+            line.soft_delete(user)
+    
+    def restore(self):
+        """Restore this GRN and all its lines"""
+        self.valid = True
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save()
+        
+        # Also restore all lines
+        for line in self.lines.all():
+            line.restore()
 
 
 class GRNLine(models.Model):
@@ -149,12 +199,32 @@ class GRNLine(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     line_number = models.PositiveIntegerField(default=1)
     
+    # Soft delete fields
+    valid = models.BooleanField(
+        default=True,
+        help_text="If False, this line is considered deleted and won't show in frontend"
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when the line was marked as deleted"
+    )
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_grn_lines',
+        help_text="User who deleted this line"
+    )
+    
     class Meta:
         ordering = ['line_number']
         unique_together = ['grn', 'line_number']
 
     def __str__(self):
-        return f"Line {self.line_number} - {self.sender_name or 'No Sender'} (GRN {self.grn.id})"
+        status = " [DELETED]" if not self.valid else ""
+        return f"Line {self.line_number} - {self.sender_name or 'No Sender'} (GRN {self.grn.id}){status}"
     
     @property
     def is_inwarded(self):
@@ -170,9 +240,24 @@ class GRNLine(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.line_number:
-            last_line = GRNLine.objects.filter(grn=self.grn).order_by('-line_number').first()
+            # Only count VALID lines when assigning line numbers
+            last_line = GRNLine.objects.filter(grn=self.grn, valid=True).order_by('-line_number').first()
             self.line_number = (last_line.line_number + 1) if last_line else 1
         super().save(*args, **kwargs)
+    
+    def soft_delete(self, user=None):
+        """Soft delete this GRN line"""
+        self.valid = False
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save()
+    
+    def restore(self):
+        """Restore this GRN line"""
+        self.valid = True
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save()
 
 
 class OTP(models.Model):

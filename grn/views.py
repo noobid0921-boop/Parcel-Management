@@ -68,7 +68,7 @@ def change_location(request):
 GRNLineFormSet = inlineformset_factory(
     GRN, GRNLine,
     fields=('sender_name', 'phone', 'sender_location', 'courier_name', 'courier_id', 'parcel_type', 'remark'),
-    extra=1,  # Number of empty forms to display
+    extra=1,
     can_delete=True
 )
 
@@ -83,7 +83,6 @@ class GRNCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         context['locations'] = Location.objects.all().order_by('name')
         
-        # Get current location
         current_location_id = self.request.session.get('current_location_id')
         if current_location_id:
             try:
@@ -93,7 +92,6 @@ class GRNCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
         elif not (self.request.user.is_staff or self.request.user.is_superuser):
             context['current_location'] = self.request.user.location
         
-        # Add formset for GRN lines
         if self.request.POST:
             context['formset'] = GRNLineFormSet(self.request.POST)
         else:
@@ -108,49 +106,40 @@ class GRNCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
         if formset.is_valid():
             try:
                 with transaction.atomic():
-                    # Save the main GRN first
                     grn = form.save(commit=False)
-                    grn.created_by = self.request.user  # Track who created the GRN
+                    grn.created_by = self.request.user
                     grn.save()
                     
-                    # Process each form in the formset and assign line numbers
                     lines = []
                     line_number = 1
                     
                     for form_instance in formset.forms:
                         if form_instance.cleaned_data and not form_instance.cleaned_data.get('DELETE', False):
-                            # Check if the form has valid data (not empty)
                             if any(form_instance.cleaned_data.get(field) for field in ['sender_name', 'phone', 'courier_name', 'parcel_type']):
                                 line = form_instance.save(commit=False)
                                 line.grn = grn
-                                line.line_number = line_number  # Assign sequential line number
+                                line.line_number = line_number
                                 line.save()
                                 lines.append(line)
                                 line_number += 1
                     
                     if not lines:
                         messages.error(self.request, 'At least one parcel line is required.')
-                        grn.delete()  # Clean up the created GRN
+                        grn.delete()
                         return self.form_invalid(form)
                     
-                    # Generate OTP only for non-warehouse deliveries
                     if not grn.delivery_location.is_warehouse:
-                        # Generate ONE OTP for the entire GRN
                         otp_code = OTP.generate_otp()
                         OTP.objects.create(otp=otp_code, grn=grn)
-                        
-                        # Send email with single OTP for all parcels
                         self.send_otp_email(grn, otp_code, lines)
-                        
                         messages.success(
                             self.request, 
                             f'GRN {grn.id} created successfully with {len(lines)} lines. OTP sent to {grn.receiver.email}'
                         )
                     else:
-                        # Warehouse delivery - no OTP needed at creation
                         messages.success(
                             self.request, 
-                            f'GRN {grn.id} created successfully with {len(lines)} lines for warehouse delivery. OTP will be generated when inwarded by floor user.'
+                            f'GRN {grn.id} created successfully with {len(lines)} lines for warehouse delivery.'
                         )
                     
                     return redirect(self.success_url)
@@ -159,7 +148,6 @@ class GRNCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
                 messages.error(self.request, f'Error creating GRN: {str(e)}')
                 return self.form_invalid(form)
         else:
-            # Add formset errors to messages
             for form_errors in formset.errors:
                 for field, errors in form_errors.items():
                     for error in errors:
@@ -170,7 +158,6 @@ class GRNCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
             return self.form_invalid(form)
 
     def form_invalid(self, form):
-        # Add form errors to messages
         for field, errors in form.errors.items():
             for error in errors:
                 messages.error(self.request, f'{field}: {error}')
@@ -180,7 +167,6 @@ class GRNCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
     def send_otp_email(self, grn, otp_code, lines):
         subject = f'Parcel Delivery Notification - GRN {grn.id}'
         
-        # Build message with all line items
         lines_info = []
         for line in lines:
             line_info = f"""
@@ -217,7 +203,7 @@ Parcel Tracking Team
             )
         except Exception as e:
             messages.error(self.request, f'Failed to send email: {str(e)}')
-            raise  # Re-raise to trigger transaction rollback
+            raise
 
 
 class GRNListView(LoginRequiredMixin, ListView):
@@ -227,40 +213,34 @@ class GRNListView(LoginRequiredMixin, ListView):
     paginate_by = 100
 
     def get_queryset(self):
-        queryset = GRN.objects.select_related(
+        # UPDATED: Filter only valid GRNs
+        queryset = GRN.objects.filter(valid=True).select_related(
             'delivery_location', 'receiver', 'otp'
         ).prefetch_related(
-            Prefetch('lines', queryset=GRNLine.objects.select_related('dn'))
+            Prefetch('lines', queryset=GRNLine.objects.filter(valid=True).select_related('dn'))
         ).order_by('-created_at')
         
-        # Get current location from session
         current_location_id = self.request.session.get('current_location_id')
         
-        # Apply location filtering
         if self.request.user.is_staff or self.request.user.is_superuser:
-            # Admin users can see GRNs from their selected location
             if current_location_id:
                 try:
                     current_location = Location.objects.get(id=current_location_id)
                     queryset = queryset.filter(delivery_location=current_location)
                 except Location.DoesNotExist:
-                    # Clear invalid location from session
                     if 'current_location_id' in self.request.session:
                         del self.request.session['current_location_id']
         else:
-            # Non-admin users can only see GRNs from their assigned location
             if self.request.user.location:
                 queryset = queryset.filter(delivery_location=self.request.user.location)
             else:
                 return GRN.objects.none()
 
-        # Apply search and filters
         queryset = self.apply_filters(queryset)
         return queryset
 
     def apply_filters(self, queryset):
         """Apply various filters to the queryset"""
-        # Search filter - now searches in GRN lines
         q = self.request.GET.get('q')
         if q:
             queryset = queryset.filter(
@@ -270,7 +250,6 @@ class GRNListView(LoginRequiredMixin, ListView):
                 Q(id__icontains=q)
             ).distinct()
 
-        # Date range filters
         start_date = self.request.GET.get('start_date')
         if start_date:
             try:
@@ -287,33 +266,27 @@ class GRNListView(LoginRequiredMixin, ListView):
             except ValueError:
                 pass
 
-        # Parcel type filter - validate against choices
         parcel_type = self.request.GET.get('parcel_type')
         if parcel_type:
             valid_types = [choice[0] for choice in GRNLine.PARCEL_TYPE_CHOICES]
             if parcel_type in valid_types:
                 queryset = queryset.filter(lines__parcel_type=parcel_type).distinct()
 
-        # Status filter - check if all lines are delivered or not
         status = self.request.GET.get('status')
         if status == 'delivered':
-            # GRNs where all lines have DNs
             queryset = queryset.filter(lines__dn__isnull=False).annotate(
                 delivered_lines=Count('lines__dn'),
                 total_lines_count=Count('lines')
             ).filter(delivered_lines=F('total_lines_count')).distinct()
         elif status == 'pending':
-            # GRNs where at least one line doesn't have a DN
             queryset = queryset.filter(lines__dn__isnull=True).distinct()
 
-        # Courier filter - validate against choices
         courier = self.request.GET.get('courier')
         if courier:
             valid_couriers = [choice[0] for choice in GRNLine.COURIER_CHOICES]
             if courier in valid_couriers:
                 queryset = queryset.filter(lines__courier_name=courier).distinct()
 
-        # Phone number filter
         phone = self.request.GET.get('phone')
         if phone:
             queryset = queryset.filter(lines__phone__icontains=phone).distinct()
@@ -322,11 +295,8 @@ class GRNListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
-        # Get current location
         current_location = self.get_current_location()
         
-        # Add location data to context
         context.update({
             'current_location': current_location,
             'locations': Location.objects.all().order_by('name'),
@@ -346,18 +316,15 @@ class GRNListView(LoginRequiredMixin, ListView):
             try:
                 current_location = Location.objects.get(id=current_location_id)
             except Location.DoesNotExist:
-                # Clear invalid location from session
                 if 'current_location_id' in self.request.session:
                     del self.request.session['current_location_id']
         
-        # If no location selected and user is admin, use first location as default
         if not current_location and (self.request.user.is_staff or self.request.user.is_superuser):
             first_location = Location.objects.first()
             if first_location:
                 current_location = first_location
                 self.request.session['current_location_id'] = first_location.id
         
-        # For non-admin users, use their assigned location
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             current_location = self.request.user.location
 
@@ -382,10 +349,11 @@ class GRNDetailView(LoginRequiredMixin, DetailView):
     context_object_name = 'grn'
 
     def get_queryset(self):
-        queryset = GRN.objects.select_related(
+        # UPDATED: Filter only valid GRNs
+        queryset = GRN.objects.filter(valid=True).select_related(
             'delivery_location', 'receiver', 'otp', 'created_by'
         ).prefetch_related(
-            Prefetch('lines', queryset=GRNLine.objects.select_related(
+            Prefetch('lines', queryset=GRNLine.objects.filter(valid=True).select_related(
                 'dn', 
                 'warehouse_inward',
                 'warehouse_inward__inwarded_by',
@@ -393,11 +361,9 @@ class GRNDetailView(LoginRequiredMixin, DetailView):
             ))
         )
         
-        # Apply location permissions
         current_location_id = self.request.session.get('current_location_id')
         
         if self.request.user.is_staff or self.request.user.is_superuser:
-            # Admin users can see GRNs from their selected location
             if current_location_id:
                 try:
                     current_location = Location.objects.get(id=current_location_id)
@@ -405,7 +371,6 @@ class GRNDetailView(LoginRequiredMixin, DetailView):
                 except Location.DoesNotExist:
                     pass
         else:
-            # Non-admin users can only see GRNs from their assigned location
             if self.request.user.location:
                 queryset = queryset.filter(delivery_location=self.request.user.location)
             else:
@@ -415,11 +380,8 @@ class GRNDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
-        # Add location context
         context['locations'] = Location.objects.all().order_by('name')
         
-        # Get current location
         current_location_id = self.request.session.get('current_location_id')
         if current_location_id:
             try:
@@ -429,40 +391,81 @@ class GRNDetailView(LoginRequiredMixin, DetailView):
         elif not (self.request.user.is_staff or self.request.user.is_superuser):
             context['current_location'] = self.request.user.location
         
-        # Add line information with their DNs
-        context['grn_lines'] = self.object.lines.all().order_by('line_number')
+        # UPDATED: Filter only valid lines
+        context['grn_lines'] = self.object.lines.filter(valid=True).order_by('line_number')
 
         return context
 
 
 class GRNDeleteView(LoginRequiredMixin, AdminRequiredMixin, View):
-    """Class-based delete view for GRN"""
+    """UPDATED: Class-based SOFT DELETE view for GRN"""
     
     def post(self, request, pk):
-        """Handle POST request to delete GRN"""
-        # Get the GRN object
-        grn = get_object_or_404(GRN, pk=pk)
+        """Handle POST request to soft delete GRN"""
+        # Check if this is an AJAX request (for popup response)
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        
+        # UPDATED: Only get valid GRNs
+        grn = get_object_or_404(GRN, pk=pk, valid=True)
 
-        # Check location permissions
+        # Permission check
         if not has_location_permission(request.user, grn.delivery_location, request.session):
-            messages.error(request, "You don't have permission to delete this GRN.")
+            error_msg = "You don't have permission to delete this GRN."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error_msg})
+            messages.error(request, error_msg)
             return redirect('grn:grn_list')
 
-        # Check if any line is already delivered
-        delivered_lines = grn.lines.filter(dn__isnull=False)
+        # CRITICAL: Check if this is a WAREHOUSE GRN - cannot be deleted
+        if grn.delivery_location.is_warehouse:
+            error_msg = f"Cannot delete GRN #{grn.id}. This is a Warehouse GRN. Warehouse GRNs cannot be deleted to maintain warehouse inventory audit trail and delivery records."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error_msg})
+            messages.error(request, error_msg)
+            return redirect('grn:grn_list')
+
+        # Check if this is a transferred GRN from warehouse
+        if grn.place and 'Transferred from' in grn.place:
+            error_msg = f"Cannot delete GRN #{grn.id}. This GRN was transferred from warehouse and contains items that were collected from warehouse storage. Transferred GRNs cannot be deleted to maintain audit trail."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error_msg})
+            messages.error(request, error_msg)
+            return redirect('grn:grn_list')
+
+        # UPDATED: Check valid lines only - delivered items
+        delivered_lines = grn.lines.filter(valid=True, dn__isnull=False)
         if delivered_lines.exists():
-            messages.error(request, "Cannot delete a GRN with delivered items.")
+            error_msg = f"Cannot delete GRN #{grn.id}. This GRN has {delivered_lines.count()} delivered item(s). GRNs with delivered items cannot be deleted."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error_msg})
+            messages.error(request, error_msg)
+            return redirect('grn:grn_list')
+        
+        # UPDATED: Check valid lines only - inwarded items
+        inwarded_lines = grn.lines.filter(valid=True, warehouse_inward__isnull=False)
+        if inwarded_lines.exists():
+            error_msg = f"Cannot delete GRN #{grn.id}. This GRN has {inwarded_lines.count()} inwarded item(s). GRNs with warehouse inward records cannot be deleted."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error_msg})
+            messages.error(request, error_msg)
             return redirect('grn:grn_list')
 
-        # Delete the GRN (will cascade to lines, OTPs, etc.)
+        # UPDATED: Soft delete instead of hard delete
         grn_id = grn.id
-        total_lines = grn.lines.count()
+        total_lines = grn.total_lines
         try:
             with transaction.atomic():
-                grn.delete()
-            messages.success(request, f"GRN {grn_id} with {total_lines} lines deleted successfully.")
+                grn.soft_delete(user=request.user)  # This will cascade to all lines
+            
+            success_msg = f"GRN #{grn_id} with {total_lines} line(s) deleted successfully."
+            if is_ajax:
+                return JsonResponse({'success': True, 'message': success_msg})
+            messages.success(request, success_msg)
         except Exception as e:
-            messages.error(request, f"Error deleting GRN: {str(e)}")
+            error_msg = f"Error deleting GRN #{grn_id}: {str(e)}"
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error_msg})
+            messages.error(request, error_msg)
 
         return redirect('grn:grn_list')
 
@@ -474,11 +477,8 @@ class OTPVerificationView(LoginRequiredMixin, AdminRequiredMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
-        # Add location context
         context['locations'] = Location.objects.all().order_by('name')
         
-        # Get current location
         current_location_id = self.request.session.get('current_location_id')
         if current_location_id:
             try:
@@ -488,22 +488,21 @@ class OTPVerificationView(LoginRequiredMixin, AdminRequiredMixin, FormView):
         elif not (self.request.user.is_staff or self.request.user.is_superuser):
             context['current_location'] = self.request.user.location
         
-        # Get GRN info (instead of GRN line)
         grn_id = self.request.GET.get('grn_id')
         
         if grn_id:
             try:
-                grn = get_object_or_404(GRN, id=grn_id)
+                # UPDATED: Only get valid GRNs
+                grn = get_object_or_404(GRN, id=grn_id, valid=True)
                 
-                # Check location permissions
                 if not has_location_permission(self.request.user, grn.delivery_location, self.request.session):
                     messages.error(self.request, "You don't have permission to verify this GRN.")
                     return context
                 
                 context['grn'] = grn
-                context['grn_lines'] = grn.lines.all().order_by('line_number')
+                # UPDATED: Only show valid lines
+                context['grn_lines'] = grn.lines.filter(valid=True).order_by('line_number')
                 
-                # Add OTP info if available
                 try:
                     context['otp_obj'] = grn.otp
                 except OTP.DoesNotExist:
@@ -525,27 +524,23 @@ class OTPVerificationView(LoginRequiredMixin, AdminRequiredMixin, FormView):
         otp_code = form.cleaned_data['otp']
         
         try:
-            # Find OTP and corresponding GRN
             otp = OTP.objects.select_related('grn').get(otp=otp_code, valid=True)
             grn = otp.grn
             
-            # Check location permissions
             if not has_location_permission(self.request.user, grn.delivery_location, self.request.session):
                 messages.error(self.request, "You don't have permission to verify this GRN.")
                 return self.form_invalid(form)
 
-            # Check if OTP is expired
             if otp.is_expired():
                 messages.error(self.request, 'OTP has expired. Please contact the administrator.')
                 return self.form_invalid(form)
 
-            # Check if all items are already delivered
-            undelivered_lines = grn.lines.filter(dn__isnull=True)
+            # UPDATED: Only get valid undelivered lines
+            undelivered_lines = grn.lines.filter(valid=True, dn__isnull=True)
             if not undelivered_lines.exists():
                 messages.error(self.request, 'All items in this GRN have already been collected.')
                 return self.form_invalid(form)
 
-            # Create DNs for all undelivered lines and invalidate OTP
             with transaction.atomic():
                 dns_created = []
                 for line in undelivered_lines:
@@ -576,26 +571,23 @@ class OTPVerificationView(LoginRequiredMixin, AdminRequiredMixin, FormView):
 @require_POST
 def resend_otp(request, grn_id):
     """Resend OTP for a specific GRN"""
-    # Check if user is admin
     if not (request.user.is_staff or request.user.is_superuser):
         messages.error(request, "You don't have permission to resend OTPs.")
         return redirect('grn:grn_list')
 
-    grn = get_object_or_404(GRN, id=grn_id)
+    # UPDATED: Only get valid GRNs
+    grn = get_object_or_404(GRN, id=grn_id, valid=True)
     
-    # Check location permissions
     if not has_location_permission(request.user, grn.delivery_location, request.session):
         messages.error(request, "You don't have permission to resend OTP for this GRN.")
         return redirect('grn:grn_list')
 
-    # Check if GRN is already fully delivered
     if grn.is_delivered:
         messages.error(request, "Cannot resend OTP for a fully delivered GRN.")
         return redirect('grn:grn_detail', pk=grn.id)
 
     try:
         with transaction.atomic():
-            # Get or create OTP for this GRN
             otp_obj, created = OTP.objects.get_or_create(
                 grn=grn,
                 defaults={
@@ -604,17 +596,14 @@ def resend_otp(request, grn_id):
                 }
             )
             
-            # If OTP already exists, regenerate it and mark as valid
             if not created:
                 otp_obj.otp = OTP.generate_otp()
                 otp_obj.valid = True
-                otp_obj.created_at = timezone.now()  # Reset creation time
+                otp_obj.created_at = timezone.now()
                 otp_obj.save()
             
-            # Get undelivered lines for email content
-            undelivered_lines = grn.lines.filter(dn__isnull=True)
-            
-            # Send email with new OTP
+            # UPDATED: Only get valid undelivered lines
+            undelivered_lines = grn.lines.filter(valid=True, dn__isnull=True)
             send_resend_otp_email(grn, otp_obj.otp, undelivered_lines)
             
             messages.success(
@@ -632,7 +621,6 @@ def send_resend_otp_email(grn, otp_code, undelivered_lines):
     """Send resend OTP email"""
     subject = f'Resend: Parcel Collection OTP - GRN {grn.id}'
     
-    # Build message with undelivered line items
     lines_info = []
     for line in undelivered_lines:
         line_info = f"""
@@ -675,7 +663,6 @@ Parcel Tracking Team
         raise Exception(f'Failed to send resend email: {str(e)}')
 
 
-# ==================== UPDATED DN LIST VIEW ====================
 class DNListView(LoginRequiredMixin, ListView):
     model = DN
     template_name = 'grn/dn_list.html'
@@ -683,6 +670,7 @@ class DNListView(LoginRequiredMixin, ListView):
     paginate_by = 100
 
     def get_queryset(self):
+        # UPDATED: Filter to show only DNs for valid GRNs and lines at user's location
         queryset = DN.objects.select_related(
             'grn_line',
             'grn_line__grn',
@@ -691,35 +679,35 @@ class DNListView(LoginRequiredMixin, ListView):
             'grn_line__warehouse_inward',
             'grn_line__warehouse_inward__inwarded_by',
             'grn_line__warehouse_inward__inwarded_by__location'
+        ).filter(
+            grn_line__valid=True,
+            grn_line__grn__valid=True
         ).order_by('-created_at')
 
-        # Location-based filtering
-        location_filter_id = self.request.GET.get('location_filter')
+        # UPDATED: Use session-based current_location_id for admin users
+        current_location_id = self.request.session.get('current_location_id')
         
         if self.request.user.is_staff or self.request.user.is_superuser:
-            # Admin users can filter by location if specified
-            if location_filter_id:
+            if current_location_id:
                 try:
-                    location = Location.objects.get(id=location_filter_id)
-                    queryset = queryset.filter(grn_line__grn__delivery_location=location)
+                    current_location = Location.objects.get(id=current_location_id)
+                    queryset = queryset.filter(grn_line__grn__delivery_location=current_location)
                 except Location.DoesNotExist:
-                    pass
-            # Otherwise show ALL DNs from ALL locations
+                    if 'current_location_id' in self.request.session:
+                        del self.request.session['current_location_id']
         else:
-            # Non-admin users can only see DNs from their assigned location
+            # Non-admin users: filter by their assigned location
             if self.request.user.location:
                 queryset = queryset.filter(grn_line__grn__delivery_location=self.request.user.location)
             else:
                 return DN.objects.none()
 
-        # Apply filters
         queryset = self.apply_filters(queryset)
         return queryset
 
     def apply_filters(self, queryset):
-        """Apply filters to the DN queryset - ENHANCED WITH DELIVERY TYPE FILTER"""
+        """Apply filters to the DN queryset"""
         
-        # General search filter
         q = self.request.GET.get('q')
         if q:
             queryset = queryset.filter(
@@ -730,7 +718,6 @@ class DNListView(LoginRequiredMixin, ListView):
                 Q(grn_line__grn__id__icontains=q)
             )
 
-        # Date range filters
         start_date = self.request.GET.get('start_date')
         if start_date:
             try:
@@ -747,36 +734,30 @@ class DNListView(LoginRequiredMixin, ListView):
             except ValueError:
                 pass
 
-        # Parcel type filter
         parcel_type = self.request.GET.get('parcel_type')
         if parcel_type:
             valid_types = [choice[0] for choice in GRNLine.PARCEL_TYPE_CHOICES]
             if parcel_type in valid_types:
                 queryset = queryset.filter(grn_line__parcel_type=parcel_type)
 
-        # Courier filter
         courier = self.request.GET.get('courier')
         if courier:
             valid_couriers = [choice[0] for choice in GRNLine.COURIER_CHOICES]
             if courier in valid_couriers:
                 queryset = queryset.filter(grn_line__courier_name=courier)
 
-        # Phone filter
         phone = self.request.GET.get('phone')
         if phone:
             queryset = queryset.filter(grn_line__phone__icontains=phone)
 
-        # Location filter (delivery location name)
         location = self.request.GET.get('location')
         if location:
             queryset = queryset.filter(grn_line__grn__delivery_location__name__icontains=location)
 
-        # Sender filter
         sender = self.request.GET.get('sender')
         if sender:
             queryset = queryset.filter(grn_line__sender_name__icontains=sender)
 
-        # Receiver filter (searches both name and username)
         receiver = self.request.GET.get('receiver')
         if receiver:
             queryset = queryset.filter(
@@ -784,58 +765,52 @@ class DNListView(LoginRequiredMixin, ListView):
                 Q(grn_line__grn__receiver__username__icontains=receiver)
             )
         
-        # ==================== NEW: DELIVERY TYPE FILTER ====================
         delivery_type = self.request.GET.get('delivery_type')
         if delivery_type == 'otp':
-            # Show only OTP-verified deliveries (from_warehouse_inward=False)
             queryset = queryset.filter(from_warehouse_inward=False)
         elif delivery_type == 'warehouse':
-            # Show only warehouse-inwarded deliveries (from_warehouse_inward=True)
             queryset = queryset.filter(from_warehouse_inward=True)
-        # If delivery_type is empty or 'all', show all DNs (no filter)
         
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
-        # Get selected location if filter is applied
-        location_filter_id = self.request.GET.get('location_filter')
-        selected_location = None
+        # UPDATED: Use session-based current_location_id (same as GRNListView)
+        current_location = self.get_current_location()
         
-        if location_filter_id:
-            try:
-                selected_location = Location.objects.get(id=location_filter_id)
-            except Location.DoesNotExist:
-                pass
+        # REMOVED: Statistics cards (total_dns, otp_deliveries, warehouse_deliveries)
         
-        # Get current location for non-admin users
-        current_location = None
-        if not (self.request.user.is_staff or self.request.user.is_superuser):
-            current_location = self.request.user.location
-        
-        # Calculate statistics
-        total_dns = self.get_queryset().count()
-        otp_deliveries = self.get_queryset().filter(from_warehouse_inward=False).count()
-        warehouse_deliveries = self.get_queryset().filter(from_warehouse_inward=True).count()
-        
-        # Add context data
         context.update({
             'current_location': current_location,
-            'selected_location': selected_location,
             'locations': Location.objects.all().order_by('name'),
             'parcel_type_choices': GRNLine.PARCEL_TYPE_CHOICES,
             'courier_choices': GRNLine.COURIER_CHOICES,
             'current_filters': self.get_current_filters(),
-            'total_dns': total_dns,
-            'otp_deliveries': otp_deliveries,
-            'warehouse_deliveries': warehouse_deliveries,
         })
         
         return context
 
+    def get_current_location(self):
+        """Get the current location for the user (same as GRNListView)"""
+        current_location_id = self.request.session.get('current_location_id')
+        current_location = None
+        
+        if current_location_id:
+            try:
+                current_location = Location.objects.get(id=current_location_id)
+            except Location.DoesNotExist:
+                if 'current_location_id' in self.request.session:
+                    del self.request.session['current_location_id']
+        
+        # For non-admin users, use their assigned location
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            current_location = self.request.user.location
+
+        return current_location
+
     def get_current_filters(self):
-        """Get current filter values to maintain state - ENHANCED"""
+        """Get current filter values to maintain state"""
         return {
             'q': self.request.GET.get('q', ''),
             'start_date': self.request.GET.get('start_date', ''),
@@ -846,36 +821,36 @@ class DNListView(LoginRequiredMixin, ListView):
             'location': self.request.GET.get('location', ''),
             'sender': self.request.GET.get('sender', ''),
             'receiver': self.request.GET.get('receiver', ''),
-            'location_filter': self.request.GET.get('location_filter', ''),
-            'delivery_type': self.request.GET.get('delivery_type', ''),  # NEW
+            'delivery_type': self.request.GET.get('delivery_type', ''),
         }
 
 
 class WarehouseGRNListView(LoginRequiredMixin, ListView):
-    """View to show GRNs delivered to warehouse locations
-    Shows all lines with their inward status for warehouse users"""
+    """View to show GRNs delivered to warehouse locations"""
     model = GRN
     template_name = 'grn/warehouse_grn_list.html'
     context_object_name = 'grns'
     paginate_by = 100
 
     def get_queryset(self):
-        # Get GRNs where delivery_location is a warehouse
-        # Include lines with warehouse_inward to show inward status
-        queryset = GRN.objects.select_related(
+        # UPDATED: Filter only valid GRNs with lines that DON'T have DN
+        # Only show warehouse GRNs that have at least one line without DN (not yet collected)
+        queryset = GRN.objects.filter(
+            valid=True,
+            delivery_location__is_warehouse=True,
+            lines__valid=True,
+            lines__dn__isnull=True  # Only GRNs with uncollected items
+        ).select_related(
             'delivery_location', 'receiver', 'otp', 'created_by'
         ).prefetch_related(
-            Prefetch('lines', queryset=GRNLine.objects.select_related(
+            Prefetch('lines', queryset=GRNLine.objects.filter(valid=True).select_related(
                 'dn', 
                 'warehouse_inward',
                 'warehouse_inward__inwarded_by',
                 'warehouse_inward__inwarded_by__location'
             ).order_by('line_number'))
-        ).filter(
-            delivery_location__is_warehouse=True
-        ).order_by('-created_at')
+        ).distinct().order_by('-created_at')
         
-        # Get warehouse filter from URL parameter (not session)
         warehouse_id = self.request.GET.get('warehouse_id')
         
         if warehouse_id:
@@ -883,28 +858,20 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
                 warehouse = Location.objects.get(id=warehouse_id, is_warehouse=True)
                 queryset = queryset.filter(delivery_location=warehouse)
             except Location.DoesNotExist:
-                # If invalid warehouse ID, show no results
                 queryset = GRN.objects.none()
         else:
-            # If no warehouse selected, show first warehouse by default for staff
             if self.request.user.is_staff or self.request.user.is_superuser:
                 first_warehouse = Location.objects.filter(is_warehouse=True).first()
                 if first_warehouse:
                     queryset = queryset.filter(delivery_location=first_warehouse)
                 else:
                     queryset = GRN.objects.none()
-            else:
-                # Non-admin users can view all warehouse GRNs
-                # They can select which warehouse to process inward from
-                pass
 
-        # Apply search and filters
         queryset = self.apply_filters(queryset)
         return queryset
 
     def apply_filters(self, queryset):
         """Apply various filters to the queryset"""
-        # Search filter
         q = self.request.GET.get('q')
         if q:
             queryset = queryset.filter(
@@ -914,7 +881,6 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
                 Q(id__icontains=q)
             ).distinct()
 
-        # Date range filters
         start_date = self.request.GET.get('start_date')
         if start_date:
             try:
@@ -931,14 +897,12 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
             except ValueError:
                 pass
 
-        # Parcel type filter
         parcel_type = self.request.GET.get('parcel_type')
         if parcel_type:
             valid_types = [choice[0] for choice in GRNLine.PARCEL_TYPE_CHOICES]
             if parcel_type in valid_types:
                 queryset = queryset.filter(lines__parcel_type=parcel_type).distinct()
 
-        # Status filter
         status = self.request.GET.get('status')
         if status == 'delivered':
             queryset = queryset.filter(lines__dn__isnull=False).annotate(
@@ -948,14 +912,12 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
         elif status == 'pending':
             queryset = queryset.filter(lines__dn__isnull=True).distinct()
 
-        # Courier filter
         courier = self.request.GET.get('courier')
         if courier:
             valid_couriers = [choice[0] for choice in GRNLine.COURIER_CHOICES]
             if courier in valid_couriers:
                 queryset = queryset.filter(lines__courier_name=courier).distinct()
 
-        # Phone number filter
         phone = self.request.GET.get('phone')
         if phone:
             queryset = queryset.filter(lines__phone__icontains=phone).distinct()
@@ -964,14 +926,9 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
-        # Get current location
         current_location = self.get_current_location()
-        
-        # Get all warehouse locations
         warehouse_locations = Location.objects.filter(is_warehouse=True).order_by('name')
         
-        # Add location data to context
         context.update({
             'current_location': current_location,
             'locations': Location.objects.all().order_by('name'),
@@ -994,7 +951,6 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
             except Location.DoesNotExist:
                 pass
         
-        # If no warehouse selected, use first warehouse as default
         if not selected_warehouse:
             selected_warehouse = Location.objects.filter(is_warehouse=True).first()
 
@@ -1016,12 +972,10 @@ class WarehouseGRNListView(LoginRequiredMixin, ListView):
 @csrf_protect
 @login_required
 def warehouse_inward_process(request):
-    """Handle warehouse inward processing for selected GRN lines - Stage 1: Receiving
-    When receptionist inwards items from warehouse:
-    1. Creates a NEW GRN with receptionist's location
-    2. Moves selected lines to the new GRN
-    3. Original GRN remains visible to warehouse user
-    4. OTP is generated for new GRN and sent to receiver"""
+    """
+    Handle warehouse inward processing for selected GRN lines - Stage 1
+    UPDATED: Creates DN for warehouse delivery, duplicates lines to floor GRN
+    """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
     
@@ -1034,33 +988,29 @@ def warehouse_inward_process(request):
         if not selected_lines:
             return JsonResponse({'success': False, 'error': 'No items selected'})
         
-        # Check if user has a location assigned
         if not request.user.location:
             return JsonResponse({'success': False, 'error': 'You must have a location assigned to process inward'})
         
-        # Process selected lines grouped by original GRN
         inwarded_count = 0
         errors = []
-        grns_to_process = {}  # Group lines by original GRN: {grn_id: [lines]}
-        new_grns_created = []  # Track newly created GRNs
+        grns_to_process = {}
+        new_grns_created = []
         
         with transaction.atomic():
-            # First, validate and group all selected lines by their original GRN
+            # Step 1: Validate and group lines by GRN
             for line_id in selected_lines:
                 try:
-                    line = GRNLine.objects.select_related('grn', 'grn__delivery_location', 'grn__receiver').get(id=line_id)
+                    line = GRNLine.objects.filter(valid=True).select_related('grn', 'grn__delivery_location', 'grn__receiver').get(id=line_id)
                     
-                    # Check if it's a warehouse location
                     if not line.grn.delivery_location.is_warehouse:
                         errors.append(f"Line {line.line_number} is not from a warehouse location")
                         continue
                     
-                    # Check if already inwarded
-                    if hasattr(line, 'warehouse_inward'):
-                        errors.append(f"Line {line.line_number} is already inwarded")
+                    # Check if line already has DN (already collected)
+                    if hasattr(line, 'dn'):
+                        errors.append(f"Line {line.line_number} has already been collected")
                         continue
                     
-                    # Group by original GRN
                     if line.grn.id not in grns_to_process:
                         grns_to_process[line.grn.id] = {
                             'grn': line.grn,
@@ -1073,67 +1023,72 @@ def warehouse_inward_process(request):
                 except Exception as e:
                     errors.append(f"Error validating line {line_id}: {str(e)}")
             
-            # Process each original GRN's selected lines
+            # Step 2: Process each GRN
             for grn_id, grn_data in grns_to_process.items():
                 try:
                     original_grn = grn_data['grn']
-                    lines_to_move = grn_data['lines']
-                    old_location = original_grn.delivery_location
+                    original_lines = grn_data['lines']
+                    warehouse_location = original_grn.delivery_location
+                    floor_location = request.user.location
                     
-                    # Create NEW GRN with receptionist's location
+                    # Create NEW GRN at floor location
                     new_grn = GRN.objects.create(
                         receiver=original_grn.receiver,
-                        delivery_location=request.user.location,
-                        created_by=request.user,  # Receptionist who processed the inward
-                        place=f"Transferred from {old_location.name}"
+                        delivery_location=floor_location,
+                        created_by=request.user,
+                        place=f"Transferred from {warehouse_location.name}"
                     )
                     
-                    # Move selected lines to new GRN and create warehouse inward records
-                    moved_lines = []
-                    for line in lines_to_move:
-                        # Store old line number for reference
-                        old_line_number = line.line_number
+                    new_lines_created = []
+                    dns_created = []
+                    
+                    # Step 3: For each original line - create DN and duplicate to floor
+                    for original_line in original_lines:
+                        original_line_number = original_line.line_number
+                        original_grn_id = original_grn.id
                         
-                        # Move line to new GRN (will auto-assign new line numbers)
-                        line.grn = new_grn
-                        line.save()
+                        # STEP A: Create DN for ORIGINAL warehouse line (warehouse delivery)
+                        dn = DN.objects.create(
+                            grn_line=original_line,
+                            remark=remark or f"Collected by {request.user.name} from {warehouse_location.name} to {floor_location.name}",
+                            from_warehouse_inward=True
+                        )
+                        dns_created.append(dn)
                         
-                        # Create warehouse inward record
+                        # STEP B: Create NEW line at floor GRN (duplicate)
+                        new_line = GRNLine.objects.create(
+                            grn=new_grn,
+                            sender_name=original_line.sender_name,
+                            phone=original_line.phone,
+                            sender_location=original_line.sender_location,
+                            courier_name=original_line.courier_name,
+                            courier_id=original_line.courier_id,
+                            parcel_type=original_line.parcel_type,
+                            remark=original_line.remark,
+                            line_number=len(new_lines_created) + 1  # Sequential numbering
+                        )
+                        new_lines_created.append(new_line)
+                        
+                        # STEP C: Create WarehouseInward record linking floor line to original
                         WarehouseInward.objects.create(
-                            grn_line=line,
+                            grn_line=new_line,  # Links to NEW floor line
                             inwarded_by=request.user,
-                            inward_remark=remark or f"Transferred from {old_location.name} - Original GRN {original_grn.id} Line {old_line_number}"
+                            inward_remark=remark or f"Transferred from {warehouse_location.name} - Original GRN {original_grn_id} Line {original_line_number}"
                         )
                         
-                        moved_lines.append(line)
                         inwarded_count += 1
                     
-                    # Renumber remaining lines in original GRN (if any)
-                    remaining_lines = GRNLine.objects.filter(grn=original_grn).order_by('line_number')
-                    for idx, remaining_line in enumerate(remaining_lines, start=1):
-                        if remaining_line.line_number != idx:
-                            remaining_line.line_number = idx
-                            remaining_line.save()
-                    
-                    # Renumber lines in new GRN
-                    new_grn_lines = GRNLine.objects.filter(grn=new_grn).order_by('line_number')
-                    for idx, new_line in enumerate(new_grn_lines, start=1):
-                        if new_line.line_number != idx:
-                            new_line.line_number = idx
-                            new_line.save()
-                    
-                    # Generate OTP for the new GRN and send email to receiver
+                    # Step 4: Generate OTP for floor GRN (for final receiver collection)
                     try:
                         otp_code = OTP.generate_otp()
                         OTP.objects.create(otp=otp_code, grn=new_grn, valid=True)
                         
-                        # Send OTP email to receiver
                         send_warehouse_inward_otp_email(
                             new_grn, 
                             otp_code, 
-                            moved_lines, 
-                            old_location, 
-                            request.user.location
+                            new_lines_created, 
+                            warehouse_location, 
+                            floor_location
                         )
                         
                         new_grns_created.append(new_grn.id)
@@ -1146,10 +1101,10 @@ def warehouse_inward_process(request):
         
         if inwarded_count > 0:
             grn_list = ', '.join([f"GRN {grn_id}" for grn_id in new_grns_created])
-            message = f'Successfully received {inwarded_count} item(s) from warehouse. '
-            message += f'New GRN(s) created: {grn_list}. '
-            message += f'Items are now at {request.user.location.name}. '
-            message += 'OTP has been generated and sent to receivers for parcel collection.'
+            message = f'Successfully collected {inwarded_count} item(s) from warehouse. '
+            message += f'Warehouse delivery recorded. '
+            message += f'New GRN(s) created at {request.user.location.name}: {grn_list}. '
+            message += 'OTP has been generated and sent to receivers for final collection.'
             
             return JsonResponse({
                 'success': True,
@@ -1160,7 +1115,7 @@ def warehouse_inward_process(request):
         else:
             return JsonResponse({
                 'success': False,
-                'error': 'No items were inwarded',
+                'error': 'No items were collected from warehouse',
                 'errors': errors
             })
             
@@ -1174,7 +1129,6 @@ def send_warehouse_inward_otp_email(grn, otp_code, lines, from_location, to_loca
     """Send OTP email when warehouse items are inwarded to floor location"""
     subject = f'Parcel Ready for Collection - GRN {grn.id}'
     
-    # Build message with line items
     lines_info = []
     for line in lines:
         line_info = f"""
@@ -1218,7 +1172,7 @@ Parcel Tracking Team
 @csrf_protect
 @login_required
 def assign_to_floor(request):
-    """Handle floor assignment for inwarded items - Stage 2: Floor Assignment"""
+    """Handle floor assignment for inwarded items - Stage 2"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
     
@@ -1236,21 +1190,23 @@ def assign_to_floor(request):
         if not floor:
             return JsonResponse({'success': False, 'error': 'Floor is required'})
         
-        # Process each selected inward
         assigned_count = 0
         errors = []
         
         with transaction.atomic():
             for inward_id in selected_inwards:
                 try:
-                    inward = WarehouseInward.objects.select_related('grn_line').get(id=inward_id)
+                    # UPDATED: Check that line and GRN are valid
+                    inward = WarehouseInward.objects.select_related('grn_line').get(
+                        id=inward_id,
+                        grn_line__valid=True,
+                        grn_line__grn__valid=True
+                    )
                     
-                    # Check if already assigned to floor
                     if inward.is_on_floor:
                         errors.append(f"Item {inward.grn_line.line_number} already assigned to floor")
                         continue
                     
-                    # Assign to floor
                     inward.floor = floor
                     inward.rack = rack
                     inward.assigned_to_floor_by = request.user
@@ -1261,7 +1217,7 @@ def assign_to_floor(request):
                     assigned_count += 1
                     
                 except WarehouseInward.DoesNotExist:
-                    errors.append(f"Inward ID {inward_id} not found")
+                    errors.append(f"Inward ID {inward_id} not found or already deleted")
                 except Exception as e:
                     errors.append(f"Error processing inward {inward_id}: {str(e)}")
         
@@ -1287,7 +1243,7 @@ def assign_to_floor(request):
 @csrf_protect
 @login_required
 def warehouse_floor_delivery(request):
-    """Handle delivery from warehouse floor to receiver - Stage 3: Final Delivery"""
+    """Handle delivery from warehouse floor to receiver - Stage 3"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
     
@@ -1306,28 +1262,29 @@ def warehouse_floor_delivery(request):
         with transaction.atomic():
             for inward_id in selected_inwards:
                 try:
+                    # UPDATED: Check that line and GRN are valid
                     inward = WarehouseInward.objects.select_related(
                         'grn_line', 'grn_line__grn', 'grn_line__grn__receiver'
-                    ).get(id=inward_id)
+                    ).get(
+                        id=inward_id,
+                        grn_line__valid=True,
+                        grn_line__grn__valid=True
+                    )
                     
-                    # Check if already delivered
                     if inward.delivered_to_receiver:
                         errors.append(f"Item already delivered to receiver")
                         continue
                     
-                    # Check if DN already exists
                     if hasattr(inward.grn_line, 'dn'):
                         errors.append(f"DN already exists for this item")
                         continue
                     
-                    # Mark as delivered to receiver
                     inward.delivered_to_receiver = True
                     inward.delivered_at = timezone.now()
                     inward.delivered_by = request.user
                     inward.delivery_remark = delivery_remark
                     inward.save()
                     
-                    # Create DN for final delivery
                     DN.objects.create(
                         grn_line=inward.grn_line,
                         remark=delivery_remark or f"Parcel collected from warehouse by receiver via {request.user.name}",
@@ -1337,7 +1294,7 @@ def warehouse_floor_delivery(request):
                     delivered_count += 1
                     
                 except WarehouseInward.DoesNotExist:
-                    errors.append(f"Inward ID {inward_id} not found")
+                    errors.append(f"Inward ID {inward_id} not found or already deleted")
                 except Exception as e:
                     errors.append(f"Error processing inward {inward_id}: {str(e)}")
         
@@ -1368,7 +1325,7 @@ class WarehouseFloorDeliveryView(LoginRequiredMixin, ListView):
     paginate_by = 100
 
     def get_queryset(self):
-        # Get inwarded items that haven't been delivered to receiver yet
+        # UPDATED: Filter only valid GRN lines
         queryset = WarehouseInward.objects.select_related(
             'grn_line',
             'grn_line__grn',
@@ -1376,11 +1333,12 @@ class WarehouseFloorDeliveryView(LoginRequiredMixin, ListView):
             'grn_line__grn__delivery_location',
             'inwarded_by'
         ).filter(
-            delivered_to_receiver=False,  # Only pending floor deliveries
+            delivered_to_receiver=False,
+            grn_line__valid=True,
+            grn_line__grn__valid=True,
             grn_line__grn__delivery_location__is_warehouse=True
         ).order_by('-inwarded_at')
         
-        # Apply location filtering
         current_location_id = self.request.session.get('current_location_id')
         
         if self.request.user.is_staff or self.request.user.is_superuser:
@@ -1396,13 +1354,11 @@ class WarehouseFloorDeliveryView(LoginRequiredMixin, ListView):
             else:
                 return WarehouseInward.objects.none()
 
-        # Apply filters
         queryset = self.apply_filters(queryset)
         return queryset
 
     def apply_filters(self, queryset):
         """Apply various filters to the queryset"""
-        # Search filter
         q = self.request.GET.get('q')
         if q:
             queryset = queryset.filter(
@@ -1413,7 +1369,6 @@ class WarehouseFloorDeliveryView(LoginRequiredMixin, ListView):
                 Q(rack__icontains=q)
             )
 
-        # Date range filters
         start_date = self.request.GET.get('start_date')
         if start_date:
             try:
@@ -1430,12 +1385,10 @@ class WarehouseFloorDeliveryView(LoginRequiredMixin, ListView):
             except ValueError:
                 pass
 
-        # Floor filter
         floor = self.request.GET.get('floor')
         if floor:
             queryset = queryset.filter(floor__icontains=floor)
 
-        # Rack filter
         rack = self.request.GET.get('rack')
         if rack:
             queryset = queryset.filter(rack__icontains=rack)
@@ -1444,11 +1397,8 @@ class WarehouseFloorDeliveryView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
-        # Get current location
         current_location = self.get_current_location()
         
-        # Add context data
         context.update({
             'current_location': current_location,
             'locations': Location.objects.filter(is_warehouse=True).order_by('name'),
@@ -1502,15 +1452,14 @@ def has_location_permission(user, location, session):
 
 
 class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
-    """View to show detailed tracking of all warehouse inward operations
-    Displays all inwarded items with complete journey from warehouse to delivery"""
+    """View to show detailed tracking of all warehouse inward operations"""
     model = WarehouseInward
     template_name = 'grn/warehouse_inward_tracking.html'
     context_object_name = 'inwards'
     paginate_by = 100
 
     def get_queryset(self):
-        # Get all warehouse inward records with related data
+        # UPDATED: Filter only valid GRN lines
         queryset = WarehouseInward.objects.select_related(
             'grn_line',
             'grn_line__grn',
@@ -1522,35 +1471,31 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
             'inwarded_by__location',
             'assigned_to_floor_by',
             'delivered_by'
+        ).filter(
+            grn_line__valid=True,
+            grn_line__grn__valid=True
         ).order_by('-inwarded_at')
         
-        # Apply location filtering based on user permissions
         if self.request.user.is_staff or self.request.user.is_superuser:
-            # Admin can filter by location if specified
             location_filter_id = self.request.GET.get('location_filter')
             if location_filter_id:
                 try:
                     location = Location.objects.get(id=location_filter_id)
-                    # Filter by inwarded_by location (where items were received)
                     queryset = queryset.filter(inwarded_by__location=location)
                 except Location.DoesNotExist:
                     pass
-            # Otherwise show all warehouse inwards
         else:
-            # Non-admin users see only inwards for their location
             if self.request.user.location:
                 queryset = queryset.filter(inwarded_by__location=self.request.user.location)
             else:
                 return WarehouseInward.objects.none()
 
-        # Apply filters
         queryset = self.apply_filters(queryset)
         return queryset
 
     def apply_filters(self, queryset):
         """Apply various filters to the queryset"""
         
-        # Search filter
         q = self.request.GET.get('q')
         if q:
             queryset = queryset.filter(
@@ -1564,7 +1509,6 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
                 Q(rack__icontains=q)
             )
 
-        # Date range filters
         start_date = self.request.GET.get('start_date')
         if start_date:
             try:
@@ -1581,39 +1525,30 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
             except ValueError:
                 pass
 
-        # Stage filter (received/on_floor/delivered)
         stage = self.request.GET.get('stage')
         if stage == 'received':
-            # Items received but not assigned to floor yet
             queryset = queryset.filter(floor__isnull=True, delivered_to_receiver=False)
         elif stage == 'on_floor':
-            # Items on floor but not delivered yet
             queryset = queryset.filter(floor__isnull=False, delivered_to_receiver=False)
         elif stage == 'delivered':
-            # Items delivered to receiver
             queryset = queryset.filter(delivered_to_receiver=True)
 
-        # Warehouse filter (original warehouse location)
         warehouse = self.request.GET.get('warehouse')
         if warehouse:
             queryset = queryset.filter(grn_line__grn__delivery_location__name__icontains=warehouse)
 
-        # Receiver location filter (where items were inwarded to)
         receiver_location = self.request.GET.get('receiver_location')
         if receiver_location:
             queryset = queryset.filter(inwarded_by__location__name__icontains=receiver_location)
 
-        # Floor filter
         floor = self.request.GET.get('floor')
         if floor:
             queryset = queryset.filter(floor__icontains=floor)
 
-        # Rack filter
         rack = self.request.GET.get('rack')
         if rack:
             queryset = queryset.filter(rack__icontains=rack)
 
-        # Receiver filter
         receiver = self.request.GET.get('receiver')
         if receiver:
             queryset = queryset.filter(
@@ -1621,7 +1556,6 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
                 Q(grn_line__grn__receiver__username__icontains=receiver)
             )
 
-        # Parcel type filter
         parcel_type = self.request.GET.get('parcel_type')
         if parcel_type:
             valid_types = [choice[0] for choice in GRNLine.PARCEL_TYPE_CHOICES]
@@ -1633,7 +1567,6 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
-        # Get selected location if filter is applied
         location_filter_id = self.request.GET.get('location_filter')
         selected_location = None
         
@@ -1643,21 +1576,12 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
             except Location.DoesNotExist:
                 pass
         
-        # Get current location for non-admin users
         current_location = None
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             current_location = self.request.user.location
         
-        # Calculate statistics
-        all_inwards = self.get_queryset()
-        total_inwards = all_inwards.count()
+        # REMOVED: Statistics cards (total_inwards, received_count, on_floor_count, delivered_count)
         
-        # Count by stage
-        received_count = all_inwards.filter(floor__isnull=True, delivered_to_receiver=False).count()
-        on_floor_count = all_inwards.filter(floor__isnull=False, delivered_to_receiver=False).count()
-        delivered_count = all_inwards.filter(delivered_to_receiver=True).count()
-        
-        # Get unique warehouses and receiver locations - FIXED
         warehouses = Location.objects.filter(
             is_warehouse=True,
             grn_deliveries__lines__warehouse_inward__isnull=False
@@ -1667,7 +1591,6 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
             users__warehouse_inwards__isnull=False
         ).distinct().order_by('name')
         
-        # Add context data
         context.update({
             'current_location': current_location,
             'selected_location': selected_location,
@@ -1676,10 +1599,6 @@ class WarehouseInwardTrackingView(LoginRequiredMixin, ListView):
             'receiver_locations': receiver_locations,
             'parcel_type_choices': GRNLine.PARCEL_TYPE_CHOICES,
             'current_filters': self.get_current_filters(),
-            'total_inwards': total_inwards,
-            'received_count': received_count,
-            'on_floor_count': on_floor_count,
-            'delivered_count': delivered_count,
         })
         
         return context
